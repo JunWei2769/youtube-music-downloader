@@ -18,11 +18,11 @@ def make_track() -> Track:
         playlist_name="Test Playlist",
     )
 
-def test_download_track_mp3() -> None:
+def test_download_track_mp3(tmp_path: Path) -> None:
     """Test MP3 download configuration."""
 
     track = make_track()
-    output_directory = Path("downloads/test")
+    output_directory = tmp_path / "downloads"
 
     expected_path = (
         output_directory
@@ -36,16 +36,17 @@ def test_download_track_mp3() -> None:
         mock_instance = MagicMock()
         mock_ydl.return_value.__enter__.return_value = mock_instance
 
-        with patch.object(
-            Path,
-            "exists",
-            return_value=True,
-        ):
-            result = download_track(
-                track,
-                output_directory,
-                audio_format="mp3",
-            )
+        def fake_download(urls):
+            expected_path.parent.mkdir(parents=True, exist_ok=True)
+            expected_path.touch()
+
+        mock_instance.download.side_effect = fake_download
+
+        result = download_track(
+            track,
+            output_directory,
+            audio_format="mp3",
+        )
 
     assert result == expected_path
 
@@ -65,11 +66,11 @@ def test_download_track_mp3() -> None:
         [track.webpage_url]
     )
 
-def test_download_track_opus() -> None:
+def test_download_track_opus(tmp_path: Path) -> None:
     """Test Opus download configuration."""
 
     track = make_track()
-    output_directory = Path("downloads/test")
+    output_directory = tmp_path / "downloads"
 
     expected_path = (
         output_directory
@@ -83,16 +84,17 @@ def test_download_track_opus() -> None:
         mock_instance = MagicMock()
         mock_ydl.return_value.__enter__.return_value = mock_instance
 
-        with patch.object(
-            Path,
-            "exists",
-            return_value=True,
-        ):
-            result = download_track(
-                track,
-                output_directory,
-                audio_format="opus",
-            )
+        def fake_download(urls):
+            expected_path.parent.mkdir(parents=True, exist_ok=True)
+            expected_path.touch()
+
+        mock_instance.download.side_effect = fake_download
+
+        result = download_track(
+            track,
+            output_directory,
+            audio_format="opus",
+        )
 
     assert result == expected_path
 
@@ -138,3 +140,30 @@ def test_extract_album_name() -> None:
     assert extract_album_name("Workout") is None
     assert extract_album_name(None) is None
     assert extract_album_name("Album - ") is None
+
+def test_download_track_skips_existing(tmp_path: Path) -> None:
+    """Test that an existing audio file is not downloaded again."""
+
+    track = make_track()
+    output_directory = tmp_path / "downloads"
+
+    expected_path = (
+        output_directory
+        / "01 - Test Artist - Test Song.mp3"
+    )
+
+    output_directory.mkdir(parents=True)
+    expected_path.touch()
+
+    with patch(
+        "ytmusic_dl.downloader.YoutubeDL"
+    ) as mock_ydl:
+
+        result = download_track(
+            track,
+            output_directory,
+            audio_format="mp3",
+        )
+
+    assert result == expected_path
+    mock_ydl.assert_not_called()

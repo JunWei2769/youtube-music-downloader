@@ -52,6 +52,7 @@ def test_main() -> None:
         thumbnails=1,
         output_directory=Path("downloads/test"),
         failed_tracks=[],
+        skipped=0,
     )
 
     with (
@@ -111,6 +112,7 @@ def test_main_without_lyrics_and_thumbnail() -> None:
         thumbnails=0,
         output_directory=Path("downloads/test"),
         failed_tracks=[],
+        skipped=0,
     )
 
     with (
@@ -217,6 +219,7 @@ def test_main_with_failed_tracks(capsys) -> None:
         failed_tracks=[
             "01 - Test Song: Download failed",
         ],
+        skipped=0,
     )
 
     with (
@@ -305,6 +308,7 @@ def test_main_with_opus_format() -> None:
         thumbnails=1,
         output_directory=Path("downloads/test"),
         failed_tracks=[],
+        skipped=0
     )
 
     with (

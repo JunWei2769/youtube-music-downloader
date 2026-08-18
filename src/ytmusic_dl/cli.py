@@ -115,6 +115,7 @@ def main() -> None:
     print(f"Tracks:       {result.total}")
     print(f"Successful:   {result.successful}")
     print(f"Failed:       {result.failed}")
+    print(f"Skipped:      {result.skipped}")
     print(f"Lyrics:       {result.lyrics}")
     print(f"Thumbnails:   {result.thumbnails}")
     print()

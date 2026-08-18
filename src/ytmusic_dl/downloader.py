@@ -97,6 +97,23 @@ def extract_playlist(url: str) -> list[Track]:
 
     return tracks
 
+def audio_file_exists(
+    track: Track,
+    output_directory: Path,
+    audio_format: str,
+) -> bool:
+    """Check whether the target audio file already exists."""
+
+    filename = build_track_filename(
+        playlist_index=track.playlist_index,
+        title=track.title,
+        artist=track.artist,
+    )
+
+    audio_path = output_directory / f"{filename}.{audio_format}"
+
+    return audio_path.exists()
+
 
 def get_track_url(track: Track) -> str:
     """Return a YouTube URL for a track."""
@@ -129,6 +146,13 @@ def download_track(
         title=track.title,
         artist=track.artist,
     )
+
+    audio_path = output_directory / f"{filename}.{audio_format}"
+
+    if audio_path.exists():
+        print(f"Already exists, skipping: {audio_path.name}")
+        track.audio_path = audio_path
+        return audio_path
 
     if audio_format == "mp3":
         output_template = str(output_directory / f"{filename}.%(ext)s")

@@ -12,7 +12,7 @@ Responsibility: Application workflow
 from pathlib import Path
 from turtle import down
 
-from ytmusic_dl.downloader import download_track
+from ytmusic_dl.downloader import audio_file_exists, download_track
 from ytmusic_dl.lyrics import (
     find_best_lyrics,
     search_lyrics,
@@ -117,6 +117,7 @@ def process_playlist(
             thumbnails=0,
             output_directory=output_directory,
             failed_tracks=[],
+            skipped=0,
         )
 
     playlist_name = tracks[0].playlist_name
@@ -132,6 +133,7 @@ def process_playlist(
     failed = 0
     lyrics = 0
     thumbnails = 0
+    skipped_count = 0
     failed_tracks = []
 
     for track in tracks:
@@ -142,6 +144,20 @@ def process_playlist(
         print("-" * 50)
 
         try:
+            track_skipped = audio_file_exists(
+                track,
+                playlist_directory,
+                audio_format,
+            )
+
+            if track_skipped:
+                print(
+                    f"Skipped: {track.title} "
+                    f"(audio file already exists)"
+                )
+                skipped_count += 1
+                continue
+
             result = process_track(
                 track,
                 playlist_directory,
@@ -150,13 +166,13 @@ def process_playlist(
                 audio_format=audio_format,
             )
 
-            successful += 1
-
             if result.lyrics_written:
                 lyrics += 1
 
             if result.thumbnail_embedded:
                 thumbnails += 1
+
+            successful += 1
 
         except Exception as error:
             failed += 1
@@ -176,4 +192,5 @@ def process_playlist(
         thumbnails=thumbnails,
         output_directory=playlist_directory,
         failed_tracks=failed_tracks,
+        skipped=skipped_count,
     )

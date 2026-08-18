@@ -238,3 +238,80 @@ def test_process_playlist_with_opus() -> None:
             download_thumbnails=True,
             audio_format="opus",
         )
+
+def test_process_playlist_with_skipped_tracks() -> None:
+    """Test playlist processing when tracks already exist."""
+
+    tracks = [
+        make_track(1),
+        make_track(2),
+    ]
+
+    result = TrackResult(
+        audio_path=Path("song2.mp3"),
+        lyrics_written=True,
+        thumbnail_embedded=True,
+    )
+
+    with (
+        patch(
+            "ytmusic_dl.pipeline.audio_file_exists",
+            side_effect=[True, False],
+        ) as mock_exists,
+        patch(
+            "ytmusic_dl.pipeline.process_track",
+            return_value=result,
+        ) as mock_process,
+    ):
+        playlist_result = process_playlist(
+            tracks,
+            Path("downloads/test"),
+        )
+
+    assert playlist_result.total == 2
+    assert playlist_result.successful == 1
+    assert playlist_result.failed == 0
+    assert playlist_result.skipped == 1
+    assert playlist_result.lyrics == 1
+    assert playlist_result.thumbnails == 1
+
+    assert mock_exists.call_count == 2
+    assert mock_process.call_count == 1
+    mock_process.assert_called_once()
+
+def test_process_playlist_detects_existing_track(
+    tmp_path: Path,
+) -> None:
+    """Test that an existing audio file is counted as skipped."""
+
+    tracks = [make_track(1)]
+
+    with (
+        patch(
+            "ytmusic_dl.pipeline.audio_file_exists",
+            return_value=True,
+        ) as mock_exists,
+        patch(
+            "ytmusic_dl.pipeline.process_track",
+        ) as mock_process,
+    ):
+        playlist_result = process_playlist(
+            tracks,
+            tmp_path,
+            audio_format="mp3",
+        )
+
+    assert playlist_result.total == 1
+    assert playlist_result.successful == 0
+    assert playlist_result.failed == 0
+    assert playlist_result.skipped == 1
+    assert playlist_result.lyrics == 0
+    assert playlist_result.thumbnails == 0
+
+    mock_exists.assert_called_once_with(
+        tracks[0],
+        tmp_path / "Test Playlist",
+        "mp3",
+    )
+
+    mock_process.assert_not_called()

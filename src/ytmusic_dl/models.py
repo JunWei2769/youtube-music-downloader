@@ -58,6 +58,7 @@ class PlaylistResult:
     thumbnails: int
     output_directory: Path
     failed_tracks: list[str]
+    skipped: int
 
 @dataclass
 class TrackResult:
@@ -66,3 +67,4 @@ class TrackResult:
     audio_path: Path
     lyrics_written: bool
     thumbnail_embedded: bool
+    skipped: bool = False
