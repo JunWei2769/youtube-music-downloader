@@ -31,6 +31,25 @@ def build_parser() -> argparse.ArgumentParser:
         help="Output directory (default: downloads)",
     )
 
+    parser.add_argument(
+        "--no-lyrics",
+        action="store_true",
+        help="Skip lyrics search and download",
+    )
+
+    parser.add_argument(
+        "--no-thumbnail",
+        action="store_true",
+        help="Skip thumbnail download and embedding",
+    )
+
+    parser.add_argument(
+        "--audio-format",
+        choices=("mp3", "opus"),
+        default="mp3",
+        help="Audio format (default: mp3)",
+    )
+
     return parser
 
 def main() -> None:
@@ -50,10 +69,17 @@ def main() -> None:
 
     print("Extracting playlist...")
 
-    tracks = extract_playlist(args.url)
+    try:
+        tracks = extract_playlist(args.url)
+    except Exception as error:
+        print()
+        print("Error: Could not extract playlist.")
+        print(f"Reason: {error}")
+        return
 
     if not tracks:
-        print("No tracks found.")
+        print()
+        print("No tracks found in playlist.")
         return
 
     print(f"Found {len(tracks)} tracks.")
@@ -75,6 +101,9 @@ def main() -> None:
     result = process_playlist(
         tracks,
         args.output,
+        download_lyrics=not args.no_lyrics,
+        download_thumbnails=not args.no_thumbnail,
+        audio_format=args.audio_format,
     )
 
     print()
@@ -96,5 +125,5 @@ def main() -> None:
         print()
         print("Failed tracks:")
 
-        for track in result.failed_tracks:
-            print(f"  {track}")
+        for failed_track in result.failed_tracks:
+            print(f"  - {failed_track}")

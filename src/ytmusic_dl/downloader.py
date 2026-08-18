@@ -19,9 +19,37 @@ from typing import cast
 
 from yt_dlp import YoutubeDL
 
-from ytmusic_dl.metadata import write_metadata
 from ytmusic_dl.models import Track
 from ytmusic_dl.utils import build_track_filename, ensure_directory
+
+
+class _SilentLogger:
+    """Suppress yt-dlp output during playlist extraction."""
+
+    def debug(self, message: str) -> None:
+        pass
+
+    def warning(self, message: str) -> None:
+        pass
+
+    def error(self, message: str) -> None:
+        pass
+
+
+def extract_album_name(playlist_name: str | None) -> str | None:
+    """Extract an album name from an album playlist title."""
+
+    if not playlist_name:
+        return None
+
+    prefix = "Album - "
+
+    if playlist_name.startswith(prefix):
+        album_name = playlist_name[len(prefix) :].strip()
+
+        return album_name or None
+
+    return None
 
 
 def extract_playlist(url: str) -> list[Track]:
@@ -30,15 +58,18 @@ def extract_playlist(url: str) -> list[Track]:
     options = {
         "quiet": True,
         "no_warnings": True,
+        "logger": _SilentLogger(),
         "extract_flat": True,
         "skip_download": True,
     }
 
-    with YoutubeDL(options) as ydl: # type: ignore[arg-type]
+    with YoutubeDL(options) as ydl:  # type: ignore[arg-type]
         info = ydl.extract_info(url, download=False)
 
     if info is None:
         return []
+
+    playlist_name = cast(str | None, info.get("title"))
 
     entries = cast(list[dict[str, object]], info.get("entries") or [])
 
@@ -48,12 +79,18 @@ def extract_playlist(url: str) -> list[Track]:
         track = Track(
             playlist_index=cast(int | None, entry.get("playlist_index")) or index,
             title=cast(str, entry.get("title", "Unknown")),
-            artist=cast(str | None, entry.get("artist"))
-            or cast(str | None, entry.get("uploader")),
-            album=cast(str | None, entry.get("album")),
+            artist=(
+                cast(str | None, entry.get("artist"))
+                or cast(str | None, entry.get("uploader"))
+            ),
+            album=(
+                cast(str | None, entry.get("album"))
+                or extract_album_name(playlist_name)
+            ),
             duration=cast(float | None, entry.get("duration")),
             video_id=cast(str | None, entry.get("id")),
             webpage_url=cast(str | None, entry.get("webpage_url")),
+            playlist_name=playlist_name,
         )
 
         tracks.append(track)
@@ -61,7 +98,7 @@ def extract_playlist(url: str) -> list[Track]:
     return tracks
 
 
-def get_track_url(track:Track) -> str:
+def get_track_url(track: Track) -> str:
     """Return a YouTube URL for a track."""
 
     if track.webpage_url:
@@ -72,8 +109,16 @@ def get_track_url(track:Track) -> str:
 
     raise ValueError(f"No video ID or URL available for: {track.title}")
 
-def download_track(track: Track, output_directory: Path) -> Path:
-    """Download a single track as an MP3 file."""
+
+def download_track(
+    track: Track,
+    output_directory: Path,
+    audio_format: str = "mp3",
+) -> Path:
+    """Download a single track in the requested audio format."""
+
+    if audio_format not in {"mp3", "opus"}:
+        raise ValueError(f"Unsupported audio format: {audio_format}")
 
     track_url = get_track_url(track)
 
@@ -85,39 +130,54 @@ def download_track(track: Track, output_directory: Path) -> Path:
         artist=track.artist,
     )
 
-    output_template = str(output_directory / f"{filename}.%(ext)s")
+    if audio_format == "mp3":
+        output_template = str(output_directory / f"{filename}.%(ext)s")
 
-    options = {
-        "quiet": False,
-        "noplaylist": True,
-        "format": "bestaudio/best",
-        "outtmpl": output_template,
+        options = {
+            "quiet": False,
+            "noplaylist": True,
+            "format": "bestaudio/best",
+            "outtmpl": output_template,
+            # Match the working yt-dlp CLI configuration
+            "cookiesfrombrowser": ("vivaldi",),
+            "forceipv4": True,
+            "postprocessors": [
+                {
+                    "key": "FFmpegExtractAudio",
+                    "preferredcodec": "mp3",
+                    "preferredquality": "0",
+                }
+            ],
+        }
 
-        # Match the working yt-dlp CLI configuration
-        "cookiesfrombrowser": ("vivaldi",),
-        "forceipv4": True,
+        expected_path = output_directory / f"{filename}.mp3"
 
-        "postprocessors": [
-            {
-                "key": "FFmpegExtractAudio",
-                "preferredcodec": "mp3",
-                "preferredquality": "0",
-            }
-        ],
-    }
+    else:
+        output_template = str(output_directory / f"{filename}.%(ext)s")
 
-    with YoutubeDL(options) as ydl: # type: ignore[arg-type]
+        options = {
+            "quiet": False,
+            "noplaylist": True,
+            "format": "bestaudio[acodec=opus]",
+            "outtmpl": output_template,
+            "cookiesfrombrowser": ("vivaldi",),
+            "forceipv4": True,
+            "postprocessors": [
+                {
+                    "key": "FFmpegVideoRemuxer",
+                    "preferedformat": "opus",
+                }
+            ],
+        }
+
+        expected_path = output_directory / f"{filename}.opus"
+
+    with YoutubeDL(options) as ydl:  # type: ignore[arg-type]
         ydl.download([track_url])
 
-    audio_path = output_directory / f"{filename}.mp3"
+    if not expected_path.exists():
+        raise FileNotFoundError(f"Download file was not found: {expected_path}")
 
-    if not audio_path.exists():
-        raise FileNotFoundError(
-            f"Download file was not found: {audio_path}"
-        )
+    track.audio_path = expected_path
 
-    write_metadata(audio_path, track)
-
-    track.audio_path = audio_path
-
-    return audio_path
+    return expected_path

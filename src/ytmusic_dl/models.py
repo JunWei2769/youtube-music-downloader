@@ -23,6 +23,7 @@ class Track:
     duration: float | None = None
     video_id: str | None = None
     webpage_url: str | None = None
+    playlist_name: str | None = None
     audio_path: Path | None = None
     lyrics_path: Path | None = None
 

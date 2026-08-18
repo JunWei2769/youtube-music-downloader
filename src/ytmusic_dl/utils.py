@@ -54,3 +54,18 @@ def build_track_filename(
         filename = f"{playlist_index:02d} - {safe_title}"
 
     return filename
+
+def build_playlist_directory_name(name: str | None) -> str:
+    """Build a safe directory name for a playlist."""
+
+    if not name:
+        return "Unknown Playlist"
+
+    name = name.strip()
+
+    invalid_characters = '<>:"/\\|?*'
+
+    for character in invalid_characters:
+        name = name.replace(character, "_")
+
+    return name or "Unknown Playlist"
