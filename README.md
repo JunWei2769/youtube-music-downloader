@@ -189,6 +189,6 @@ This project is intended for personal and educational use.
 Users are responsible for complying with YouTube's Terms of Service, applicable copyright laws, and the rights of content creators.
 
 Only download content that you are legally permitted to download.
-```
+
 
 The important change is that **`uv tool install .` is now the normal installation method**, while `uv run ytmusic-dl` is documented only under **Development**. This makes the README much more natural for someone who simply wants to install and use the application.
