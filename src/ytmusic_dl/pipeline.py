@@ -74,3 +74,36 @@ def process_track(
         print(f"Warning: Could not get lyrics: {error}")
 
     return audio_path
+
+def process_playlist(
+    tracks: list[Track],
+    output_directory: Path,
+) -> list[Path]:
+    """Process all tracks in a playlist."""
+
+    audio_paths = []
+
+    for index, track in enumerate(tracks, start=1):
+        print()
+        print("=" * 60)
+        print(f"Track {index}/{len(tracks)}")
+        print(f"Title:  {track.title}")
+        print(f"Artist: {track.artist}")
+        print("=" * 60)
+
+        try:
+            audio_path = process_track(
+                track,
+                output_directory,
+            )
+
+            audio_paths.append(audio_path)
+
+            print(f"Completed: {audio_path}")
+
+        except Exception as error:
+            print(
+                f"Failed: {track.title} - {error}"
+            )
+
+    return audio_paths
