@@ -45,3 +45,23 @@ class LyricsResult:
     instrumental: bool
     synced_lyrics: str | None
     plain_lyrics: str | None
+
+@dataclass
+class PlaylistResult:
+    """Result of processing a playlist."""
+
+    total: int
+    successful: int
+    failed: int
+    lyrics: int
+    thumbnails: int
+    output_directory: Path
+    failed_tracks: list[str]
+
+@dataclass
+class TrackResult:
+    """Result of processing a single track."""
+
+    audio_path: Path
+    lyrics_written: bool
+    thumbnail_embedded: bool

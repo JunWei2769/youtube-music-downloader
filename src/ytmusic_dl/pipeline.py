@@ -18,15 +18,18 @@ from ytmusic_dl.lyrics import (
     write_lyrics,
 )
 from ytmusic_dl.metadata import write_metadata
-from ytmusic_dl.models import Track
+from ytmusic_dl.models import PlaylistResult, Track, TrackResult
 from ytmusic_dl.thumbnail import download_thumbnail, embed_thumbnail
 
 
 def process_track(
     track: Track,
     output_directory: Path,
-) -> Path:
+) -> TrackResult:
     """Download and process a single track."""
+
+    thumbnail_embedded = False
+    lyrics_written = False
 
     # download audio
     audio_path = download_track(
@@ -48,6 +51,8 @@ def process_track(
             audio_path,
             thumbnail_data,
         )
+
+        thumbnail_embedded = True
     except Exception as error:
         print(f"Warning: Could not add thumbnail: {error}")
 
@@ -70,40 +75,66 @@ def process_track(
                 lyrics_path
             )
 
+            lyrics_written = True
+
     except Exception as error:
         print(f"Warning: Could not get lyrics: {error}")
 
-    return audio_path
+    return TrackResult(
+        audio_path=audio_path,
+        lyrics_written=lyrics_written,
+        thumbnail_embedded=thumbnail_embedded,
+    )
 
 def process_playlist(
     tracks: list[Track],
     output_directory: Path,
-) -> list[Path]:
+) -> PlaylistResult:
     """Process all tracks in a playlist."""
 
-    audio_paths = []
+    successful = 0
+    failed = 0
+    lyrics = 0
+    thumbnails = 0
+    failed_tracks = []
 
-    for index, track in enumerate(tracks, start=1):
-        print()
-        print("=" * 60)
-        print(f"Track {index}/{len(tracks)}")
-        print(f"Title:  {track.title}")
-        print(f"Artist: {track.artist}")
-        print("=" * 60)
+    for track in tracks:
+        print(f"Processing: {track.title}")
+        print(f"Artist:    {track.artist or 'Unknown'}")
+        print(f"Duration:  {track.duration or 'Unknown'}")
+        print(f"Video ID:  {track.video_id or 'Unknown'}")
+        print("-" * 50)
 
         try:
-            audio_path = process_track(
+            result = process_track(
                 track,
                 output_directory,
             )
 
-            audio_paths.append(audio_path)
+            successful += 1
 
-            print(f"Completed: {audio_path}")
+            if result.lyrics_written:
+                lyrics += 1
+
+            if result.thumbnail_embedded:
+                thumbnails += 1
 
         except Exception as error:
-            print(
-                f"Failed: {track.title} - {error}"
+            failed += 1
+            failed_tracks.append(
+                f"{track.playlist_index:02d} - {track.title}: {error}"
             )
 
-    return audio_paths
+            print(
+                f"Failed: {track.title}: {error}"
+            )
+
+    return PlaylistResult(
+            total=len(tracks),
+            successful=successful,
+            failed=failed,
+            lyrics=lyrics,
+            thumbnails=thumbnails,
+            output_directory=output_directory,
+            failed_tracks=failed_tracks,
+        )

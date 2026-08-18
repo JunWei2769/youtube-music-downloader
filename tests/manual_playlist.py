@@ -11,7 +11,7 @@ tracks = extract_playlist(PLAYLIST_URL)
 
 print(f"Found {len(tracks)} tracks")
 
-audio_paths = process_playlist(
+result = process_playlist(
     tracks,
     OUTPUT_DIRECTORY,
 )
@@ -20,4 +20,4 @@ print()
 print("=" * 60)
 print("PLAYLIST COMPLETE")
 print("=" * 60)
-print(f"Successful downloads: {len(audio_paths)}")
+print(f"Successful downloads: {result.successful}")

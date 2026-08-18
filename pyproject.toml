@@ -23,7 +23,7 @@ dependencies = [
 ]
 
 [project.scripts]
-ytmusic_dl = "ytmusic_dl:main"
+ytmusic-dl = "ytmusic_dl.cli:main"
 
 [build-system]
 requires = ["uv_build>=0.12.3,<0.13.0"]
