@@ -25,7 +25,7 @@ A lightweight CLI tool for downloading audio from YouTube Music playlists.
 Clone the repository:
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/JunWei2769/youtube-music-downloader.git
 cd youtube-music-downloader
 ```
 
