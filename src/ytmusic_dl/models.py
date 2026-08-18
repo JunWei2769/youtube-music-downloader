@@ -7,3 +7,41 @@ Purpose: Define the application's data structures
 
 Responsibility: Application data structures
 """
+
+from dataclasses import dataclass
+from pathlib import Path
+
+
+@dataclass
+class Track:
+    """Represents a track from a YouTube Music playlist."""
+
+    playlist_index: int
+    title: str
+    artist: str | None = None
+    album: str | None = None
+    duration: float | None = None
+    video_id: str | None = None
+    webpage_url: str | None = None
+    audio_path: Path | None = None
+    lyrics_path: Path | None = None
+
+@dataclass
+class Lyrics:
+    """Represents lyrics retrieved from a lyrics provider."""
+
+    plain: str | None = None
+    synced: str | None = None
+
+@dataclass
+class LyricsResult:
+    """Lyrics information returned by LRCLIB."""
+
+    lrclib_id: int
+    track_name: str
+    artist_name: str
+    album_name: str | None
+    duration: float | None
+    instrumental: bool
+    synced_lyrics: str | None
+    plain_lyrics: str | None
