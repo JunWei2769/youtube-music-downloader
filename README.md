@@ -29,10 +29,16 @@ git clone <repository-url>
 cd youtube-music-downloader
 ```
 
-Install dependencies:
+Install the CLI:
 
 ```bash
-uv sync
+uv tool install .
+```
+
+After installation, `ytmusic-dl` is available directly from your terminal:
+
+```bash
+ytmusic-dl --help
 ```
 
 Make sure FFmpeg is installed:
@@ -54,7 +60,7 @@ sudo apt install ffmpeg
 ### Download a playlist
 
 ```bash
-uv run ytmusic-dl "PLAYLIST_URL"
+ytmusic-dl "PLAYLIST_URL"
 ```
 
 By default, audio is downloaded as MP3 into:
@@ -66,7 +72,7 @@ downloads/
 ### Download as Opus
 
 ```bash
-uv run ytmusic-dl \
+ytmusic-dl \
   "PLAYLIST_URL" \
   --audio-format opus
 ```
@@ -76,7 +82,7 @@ Opus downloads preserve the original Opus audio stream without re-encoding.
 ### Custom output directory
 
 ```bash
-uv run ytmusic-dl \
+ytmusic-dl \
   "PLAYLIST_URL" \
   --output downloads/music
 ```
@@ -84,7 +90,7 @@ uv run ytmusic-dl \
 ### Disable lyrics
 
 ```bash
-uv run ytmusic-dl \
+ytmusic-dl \
   "PLAYLIST_URL" \
   --no-lyrics
 ```
@@ -92,7 +98,7 @@ uv run ytmusic-dl \
 ### Disable thumbnails
 
 ```bash
-uv run ytmusic-dl \
+ytmusic-dl \
   "PLAYLIST_URL" \
   --no-thumbnail
 ```
@@ -100,7 +106,7 @@ uv run ytmusic-dl \
 ### Combine options
 
 ```bash
-uv run ytmusic-dl \
+ytmusic-dl \
   "PLAYLIST_URL" \
   --audio-format opus \
   --output downloads/music \
@@ -168,6 +174,14 @@ Current test status:
 27 passed
 ```
 
+## Development
+
+When working directly from the repository, you can also run the CLI without installing it:
+
+```bash
+uv run ytmusic-dl "PLAYLIST_URL"
+```
+
 ## Legal Notice
 
 This project is intended for personal and educational use.
@@ -175,3 +189,6 @@ This project is intended for personal and educational use.
 Users are responsible for complying with YouTube's Terms of Service, applicable copyright laws, and the rights of content creators.
 
 Only download content that you are legally permitted to download.
+```
+
+The important change is that **`uv tool install .` is now the normal installation method**, while `uv run ytmusic-dl` is documented only under **Development**. This makes the README much more natural for someone who simply wants to install and use the application.
