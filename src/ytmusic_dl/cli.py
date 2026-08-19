@@ -7,8 +7,10 @@ Responsibility: User interaction and command-line arguments.
 import argparse
 from pathlib import Path
 
-from ytmusic_dl.pipeline import process_playlist
+from ytmusic_dl.browser import find_browser
 from ytmusic_dl.downloader import extract_playlist
+from ytmusic_dl.pipeline import process_playlist
+
 
 def build_parser() -> argparse.ArgumentParser:
     """Build the command-line argument parser."""
@@ -48,6 +50,20 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("mp3", "opus"),
         default="mp3",
         help="Audio format (default: mp3)",
+    )
+
+    parser.add_argument(
+        "--browser",
+        choices=(
+            "vivaldi",
+            "chrome",
+            "chromium",
+            "brave",
+            "firefox",
+            "edge",
+            "opera",
+        ),
+        help="Browser to use for YouTube cookies",
     )
 
     return parser
@@ -98,9 +114,26 @@ def main() -> None:
     print("=" * 60)
     print()
 
+    if args.browser:
+        browser = find_browser(args.browser)
+
+        if browser is None:
+            print()
+            print(
+                f"Error: Could not find usable YouTube cookies "
+                f"in {args.browser}."
+            )
+            return
+
+        print(f"Using {browser.name} browser cookies")
+
+    else:
+        browser = None
+
     result = process_playlist(
         tracks,
         args.output,
+        browser=browser,
         download_lyrics=not args.no_lyrics,
         download_thumbnails=not args.no_thumbnail,
         audio_format=args.audio_format,

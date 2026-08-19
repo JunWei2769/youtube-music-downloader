@@ -6,6 +6,7 @@ from ytmusic_dl.browser import (
     _detect_chromium_profiles,
     _detect_firefox_profiles,
     detect_browser_profiles,
+    find_browser,
     find_browser_with_cookies,
     get_browser_path,
     has_youtube_cookies,
@@ -230,6 +231,95 @@ def test_find_browser_with_cookies_falls_back() -> None:
         browser = find_browser_with_cookies()
 
     assert browser == firefox
+
+def test_find_browser_by_name() -> None:
+    """Return a specific browser with usable YouTube cookies."""
+
+    vivaldi = BrowserProfile(
+        name="vivaldi",
+        path=Path("/fake/vivaldi/Default"),
+    )
+
+    firefox = BrowserProfile(
+        name="firefox",
+        path=Path("/fake/firefox/profile"),
+    )
+
+    vivaldi_ydl = MagicMock()
+    vivaldi_ydl.__enter__.return_value = vivaldi_ydl
+    vivaldi_ydl.cookiejar = [
+        MagicMock(domain=".youtube.com"),
+    ]
+
+    firefox_ydl = MagicMock()
+    firefox_ydl.__enter__.return_value = firefox_ydl
+    firefox_ydl.cookiejar = [
+        MagicMock(domain=".youtube.com"),
+    ]
+
+    def create_ydl(options: dict) -> MagicMock:
+        if options["cookiesfrombrowser"][0] == "vivaldi":
+            return vivaldi_ydl
+
+        return firefox_ydl
+
+    with (
+        patch(
+            "ytmusic_dl.browser.detect_browser_profiles",
+            return_value=[vivaldi, firefox],
+        ),
+        patch(
+            "ytmusic_dl.browser.YoutubeDL",
+            side_effect=create_ydl,
+        ),
+    ):
+        browser = find_browser("vivaldi")
+
+    assert browser == vivaldi
+
+def test_find_browser_returns_none_for_unknown_browser() -> None:
+    """Return None when the requested browser is not detected."""
+
+    vivaldi = BrowserProfile(
+        name="vivaldi",
+        path=Path("/fake/vivaldi/Default"),
+    )
+
+    with patch(
+        "ytmusic_dl.browser.detect_browser_profiles",
+        return_value=[vivaldi],
+    ):
+        browser = find_browser("chrome")
+
+    assert browser is None
+
+def test_find_browser_returns_none_without_youtube_cookies() -> None:
+    """Return None when the requested browser has no YouTube cookies."""
+
+    vivaldi = BrowserProfile(
+        name="vivaldi",
+        path=Path("/fake/vivaldi/Default"),
+    )
+
+    vivaldi_ydl = MagicMock()
+    vivaldi_ydl.__enter__.return_value = vivaldi_ydl
+    vivaldi_ydl.cookiejar = [
+        MagicMock(domain=".google.com"),
+    ]
+
+    with (
+        patch(
+            "ytmusic_dl.browser.detect_browser_profiles",
+            return_value=[vivaldi],
+        ),
+        patch(
+            "ytmusic_dl.browser.YoutubeDL",
+            return_value=vivaldi_ydl,
+        ),
+    ):
+        browser = find_browser("vivaldi")
+
+    assert browser is None
 
 def test_has_youtube_cookies() -> None:
     """Detect YouTube cookies in a cookie jar."""

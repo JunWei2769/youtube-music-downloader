@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 import pytest
 
+from ytmusic_dl.browser import BrowserProfile
 from ytmusic_dl.cli import build_parser, main
 from ytmusic_dl.models import PlaylistResult, Track
 
@@ -83,6 +84,7 @@ def test_main() -> None:
     mock_process.assert_called_once_with(
         tracks,
         Path("downloads/test"),
+        browser=None,
         download_lyrics=True,
         download_thumbnails=True,
         audio_format="mp3",
@@ -141,6 +143,7 @@ def test_main_without_lyrics_and_thumbnail() -> None:
     mock_process.assert_called_once_with(
         tracks,
         Path("downloads/test"),
+        browser=None,
         download_lyrics=False,
         download_thumbnails=False,
         audio_format="mp3",
@@ -247,6 +250,177 @@ def test_main_with_failed_tracks(capsys) -> None:
     assert "Failed tracks:" in captured.out
     assert "01 - Test Song: Download failed" in captured.out
 
+def test_main_with_browser() -> None:
+    """Test CLI flow with an explicitly selected browser."""
+
+    tracks = [
+        Track(
+            playlist_index=1,
+            title="Test Song",
+            artist="Test Artist",
+            album=None,
+            duration=200,
+            video_id="test123",
+            webpage_url="https://youtube.com/watch?v=test123",
+            playlist_name="Test Playlist",
+        )
+    ]
+
+    browser = BrowserProfile(
+        name="vivaldi",
+        path=Path("/fake/vivaldi/Default"),
+    )
+
+    result = PlaylistResult(
+        total=1,
+        successful=1,
+        failed=0,
+        lyrics=1,
+        thumbnails=1,
+        output_directory=Path("downloads"),
+        failed_tracks=[],
+        skipped=0,
+    )
+
+    with (
+        patch(
+            "ytmusic_dl.cli.extract_playlist",
+            return_value=tracks,
+        ),
+        patch(
+            "ytmusic_dl.cli.find_browser",
+            return_value=browser,
+        ) as mock_find_browser,
+        patch(
+            "ytmusic_dl.cli.process_playlist",
+            return_value=result,
+        ) as mock_process,
+        patch(
+            "sys.argv",
+            [
+                "ytmusic-dl",
+                "https://music.youtube.com/playlist?list=test",
+                "--browser",
+                "vivaldi",
+            ],
+        ),
+    ):
+        main()
+
+    mock_find_browser.assert_called_once_with("vivaldi")
+
+    mock_process.assert_called_once_with(
+        tracks,
+        Path("downloads"),
+        browser=browser,
+        download_lyrics=True,
+        download_thumbnails=True,
+        audio_format="mp3",
+    )
+
+def test_main_with_unavailable_browser() -> None:
+    """Test CLI error when the requested browser has no usable cookies."""
+
+    tracks = [
+        Track(
+            playlist_index=1,
+            title="Test Song",
+            artist="Test Artist",
+            album=None,
+            duration=200,
+            video_id="test123",
+            webpage_url="https://youtube.com/watch?v=test123",
+            playlist_name="Test Playlist",
+        )
+    ]
+
+    with (
+        patch(
+            "ytmusic_dl.cli.extract_playlist",
+            return_value=tracks,
+        ),
+        patch(
+            "ytmusic_dl.cli.find_browser",
+            return_value=None,
+        ) as mock_find_browser,
+        patch(
+            "ytmusic_dl.cli.process_playlist",
+        ) as mock_process,
+        patch(
+            "sys.argv",
+            [
+                "ytmusic-dl",
+                "https://music.youtube.com/playlist?list=test",
+                "--browser",
+                "chrome",
+            ],
+        ),
+    ):
+        main()
+
+    mock_find_browser.assert_called_once_with("chrome")
+    mock_process.assert_not_called()
+
+def test_main_without_browser_uses_automatic_detection() -> None:
+    """Test CLI flow without explicitly selecting a browser."""
+
+    tracks = [
+        Track(
+            playlist_index=1,
+            title="Test Song",
+            artist="Test Artist",
+            album=None,
+            duration=200,
+            video_id="test123",
+            webpage_url="https://youtube.com/watch?v=test123",
+            playlist_name="Test Playlist",
+        )
+    ]
+
+    result = PlaylistResult(
+        total=1,
+        successful=1,
+        failed=0,
+        lyrics=1,
+        thumbnails=1,
+        output_directory=Path("downloads"),
+        failed_tracks=[],
+        skipped=0,
+    )
+
+    with (
+        patch(
+            "ytmusic_dl.cli.extract_playlist",
+            return_value=tracks,
+        ),
+        patch(
+            "ytmusic_dl.cli.find_browser",
+        ) as mock_find_browser,
+        patch(
+            "ytmusic_dl.cli.process_playlist",
+            return_value=result,
+        ) as mock_process,
+        patch(
+            "sys.argv",
+            [
+                "ytmusic-dl",
+                "https://music.youtube.com/playlist?list=test",
+            ],
+        ),
+    ):
+        main()
+
+    mock_find_browser.assert_not_called()
+
+    mock_process.assert_called_once_with(
+        tracks,
+        Path("downloads"),
+        browser=None,
+        download_lyrics=True,
+        download_thumbnails=True,
+        audio_format="mp3",
+    )
+
 def test_build_parser_audio_format() -> None:
     """Test audio format argument."""
 
@@ -335,6 +509,7 @@ def test_main_with_opus_format() -> None:
     mock_process.assert_called_once_with(
         tracks,
         Path("downloads"),
+        browser=None,
         download_lyrics=True,
         download_thumbnails=True,
         audio_format="opus",

@@ -5,10 +5,19 @@ from pathlib import Path
 
 from yt_dlp import YoutubeDL
 
-YOUTUBE_COOKIE_DOMAINS = {
-    ".youtube.com",
-    "youtube.com",
+CHROMIUM_BROWSERS = {
+    "vivaldi",
+    "chrome",
+    "chromium",
+    "brave",
+    "edge",
+    "opera",
 }
+
+FIREFOX_BROWSERS = {
+    "firefox",
+}
+
 
 @dataclass(frozen=True)
 class BrowserProfile:
@@ -128,6 +137,7 @@ def get_browser_path() -> dict[str, Path]:
             ) / "mozilla" / "firefox",
             "edge": config / "microsoft-edge",
             "opera": config / "opera",
+            "whale": config / "naver-whale",
         }
 
     if system == "Darwin":
@@ -141,6 +151,7 @@ def get_browser_path() -> dict[str, Path]:
             "firefox": home / "Library" / "Application Support" / "Firefox",
             "edge": config / "Microsoft Edge",
             "opera": config / "com.operasoftware.Opera",
+            "whale": config / "Naver" / "Whale",
             "safari": home / "Library" / "Safari",
         }
 
@@ -156,6 +167,7 @@ def get_browser_path() -> dict[str, Path]:
             "firefox": roaming_app_data / "Mozilla" / "Firefox",
             "edge": local_app_data / "Microsoft" / "Edge",
             "opera": roaming_app_data / "Opera Software" / "Opera Stable",
+            "whale": local_app_data / "Naver" / "Whale",
         }
 
     raise RuntimeError(f"Unsupported operating system: {system}")
@@ -171,10 +183,12 @@ def detect_browser_profiles() -> list[BrowserProfile]:
         if not path.exists() or not path.is_dir():
             continue
 
-        if name =="firefox":
+        if name in FIREFOX_BROWSERS:
             profiles = _detect_firefox_profiles(path)
-        else:
+        elif name in CHROMIUM_BROWSERS:
             profiles = _detect_chromium_profiles(path)
+        else:
+            profiles = []
 
         for profile in profiles:
             detected.append(
@@ -193,25 +207,47 @@ def get_ytdlp_cookie_options(
 
     return browser.name, str(browser.path)
 
+def _browser_has_usable_cookies(browser: BrowserProfile) -> bool:
+    """Return whether a browser profile has usable YouTube cookies."""
+
+    try:
+        with YoutubeDL(
+            {
+                "quiet": True,
+                "no_warnings": True,
+                "cookiesfrombrowser": get_ytdlp_cookie_options(browser),
+            }
+        ) as ydl:
+            cookiejar = ydl.cookiejar
+
+            return (
+                cookiejar is not None
+                and has_youtube_cookies(cookiejar)
+            )
+
+    except Exception:
+        return False
+
 def find_browser_with_cookies() -> BrowserProfile | None:
     """Return the first browser profile whose cookies can be loaded."""
 
     for browser in detect_browser_profiles():
-        try:
-            with YoutubeDL(
-                {
-                    "quiet": True,
-                    "no_warnings": True,
-                    "cookiesfrombrowser": get_ytdlp_cookie_options(browser),
-                }
-            ) as ydl:
-                cookiejar = ydl.cookiejar
+        if _browser_has_usable_cookies(browser):
+            return browser
 
-                if cookiejar is not None and has_youtube_cookies(cookiejar):
-                    return browser
+    return None
 
-        except Exception:
+def find_browser(browser_name: str) -> BrowserProfile | None:
+    """Find a specific browser profile with usable YouTube cookies."""
+
+    browser_name = browser_name.lower()
+
+    for browser in detect_browser_profiles():
+        if browser.name != browser_name:
             continue
+
+        if _browser_has_usable_cookies(browser):
+            return browser
 
     return None
 
@@ -219,6 +255,6 @@ def has_youtube_cookies(cookiejar) -> bool:
     """Return whether a cookie jar contains YouTube cookies."""
 
     return any(
-        cookie.domain.lower() in YOUTUBE_COOKIE_DOMAINS
+        cookie.domain.lower().lstrip(".") == "youtube.com"
         for cookie in cookiejar
     )

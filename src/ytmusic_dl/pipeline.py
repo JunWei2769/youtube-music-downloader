@@ -104,6 +104,7 @@ def process_playlist(
     tracks: list[Track],
     output_directory: Path,
     *,
+    browser: BrowserProfile | None = None,
     download_lyrics: bool = True,
     download_thumbnails: bool = True,
     audio_format: str = "mp3",
@@ -134,13 +135,14 @@ def process_playlist(
 
     ensure_directory(playlist_directory)
 
-    browser = find_browser_with_cookies()
-
     if browser is None:
-        raise RuntimeError(
-            "No supported browser with usable cookies was found. "
-            "Please log in to YouTube in a supported browser."
-        )
+        browser = find_browser_with_cookies()
+
+        if browser is None:
+            raise RuntimeError(
+                "No supported browser with usable YouTube cookies was found. "
+                "Please log in to YouTube in a supported browser."
+            )
 
     print(f"Using {browser.name} browser cookies")
 
