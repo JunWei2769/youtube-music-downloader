@@ -10,6 +10,9 @@ A lightweight CLI tool for downloading audio from YouTube Music playlists.
 - Embed YouTube thumbnails as album artwork
 - Search and save lyrics as `.lrc` files
 - Automatically skip existing tracks
+- Automatic browser cookie detection
+- Select a specific browser for YouTube cookies
+- Inspect detected browsers and cookie availability
 - Support custom output directories
 - Support Unicode filenames
 - Simple download summary
@@ -41,7 +44,7 @@ After installation, `ytmusic-dl` is available directly from your terminal:
 ytmusic-dl --help
 ```
 
-Make sure FFmpeg is installed:
+Make sure FFmpeg is installed.
 
 ### Fedora
 
@@ -68,6 +71,8 @@ By default, audio is downloaded as MP3 into:
 ```text
 downloads/
 ```
+
+The downloader automatically looks for a browser profile containing usable YouTube cookies when they are needed.
 
 ### Download as Opus
 
@@ -103,6 +108,56 @@ ytmusic-dl \
   --no-thumbnail
 ```
 
+### Select a browser
+
+You can explicitly select a browser to use for YouTube cookies:
+
+```bash
+ytmusic-dl \
+  "PLAYLIST_URL" \
+  --browser vivaldi
+```
+
+Supported browsers include:
+
+- Vivaldi
+- Chrome
+- Chromium
+- Brave
+- Firefox
+- Edge
+- Opera
+- Whale
+- Safari
+
+The browser must contain usable YouTube cookies.
+
+### List detected browsers
+
+To check which browser profiles are detected and whether usable YouTube cookies are available:
+
+```bash
+ytmusic-dl --list-browsers
+```
+
+Example:
+
+```text
+============================================================
+Detected Browsers
+============================================================
+
+Browser: vivaldi
+Profile: /home/user/.config/vivaldi/Default
+Status:  YouTube cookies available
+
+Browser: firefox
+Profile: /home/user/.config/mozilla/firefox/xxxxxxxx.default-release
+Status:  YouTube cookies available
+```
+
+This is useful for troubleshooting browser cookie detection.
+
 ### Combine options
 
 ```bash
@@ -110,6 +165,7 @@ ytmusic-dl \
   "PLAYLIST_URL" \
   --audio-format opus \
   --output downloads/music \
+  --browser vivaldi \
   --no-lyrics \
   --no-thumbnail
 ```
@@ -120,9 +176,35 @@ ytmusic-dl \
 |---|---|
 | `--output DIR` | Output directory. Default: `downloads` |
 | `--audio-format FORMAT` | Audio format: `mp3` or `opus` |
+| `--browser BROWSER` | Browser to use for YouTube cookies |
+| `--list-browsers` | List detected browsers and YouTube cookie availability |
 | `--no-lyrics` | Disable lyrics downloading |
 | `--no-thumbnail` | Disable thumbnail embedding |
 | `-h, --help` | Show help |
+
+## Browser Cookies
+
+The downloader can use cookies from supported browsers through `yt-dlp`.
+
+This allows the downloader to access YouTube using an existing browser session when necessary.
+
+When no browser is specified, the downloader automatically searches detected browser profiles for usable YouTube cookies.
+
+You can check the detected browser profiles with:
+
+```bash
+ytmusic-dl --list-browsers
+```
+
+To explicitly select a browser:
+
+```bash
+ytmusic-dl "PLAYLIST_URL" --browser vivaldi
+```
+
+The browser may need to be closed before cookies can be read successfully, depending on the browser and operating system.
+
+Do not share or commit browser cookie files.
 
 ## Output
 
@@ -171,15 +253,38 @@ uv run pytest -v
 Current test status:
 
 ```text
-27 passed
+46 passed
+```
+
+Run individual test modules when developing:
+
+```bash
+uv run pytest tests/test_browser.py -v
+uv run pytest tests/test_cli.py -v
+uv run pytest tests/test_downloader.py -v
+uv run pytest tests/test_metadata.py -v
+uv run pytest tests/test_pipeline.py -v
+uv run pytest tests/test_thumbnail.py -v
 ```
 
 ## Development
 
-When working directly from the repository, you can also run the CLI without installing it:
+When working directly from the repository, you can run the CLI without installing it:
 
 ```bash
 uv run ytmusic-dl "PLAYLIST_URL"
+```
+
+Run the test suite:
+
+```bash
+uv run pytest -v
+```
+
+Check for whitespace errors before committing:
+
+```bash
+git diff --check
 ```
 
 ## Legal Notice
@@ -189,6 +294,3 @@ This project is intended for personal and educational use.
 Users are responsible for complying with YouTube's Terms of Service, applicable copyright laws, and the rights of content creators.
 
 Only download content that you are legally permitted to download.
-
-
-The important change is that **`uv tool install .` is now the normal installation method**, while `uv run ytmusic-dl` is documented only under **Development**. This makes the README much more natural for someone who simply wants to install and use the application.
