@@ -8,6 +8,7 @@ from ytmusic_dl.browser import (
     detect_browser_profiles,
     find_browser_with_cookies,
     get_browser_path,
+    has_youtube_cookies,
 )
 
 
@@ -196,11 +197,19 @@ def test_find_browser_with_cookies_falls_back() -> None:
 
     chrome_ydl = MagicMock()
     chrome_ydl.__enter__.return_value = chrome_ydl
-    chrome_ydl.cookiejar = None
+
+    chrome_cookie = MagicMock()
+    chrome_cookie.domain = ".google.com"
+
+    chrome_ydl.cookiejar = [chrome_cookie]
 
     firefox_ydl = MagicMock()
     firefox_ydl.__enter__.return_value = firefox_ydl
-    firefox_ydl.cookiejar = [MagicMock()]
+
+    firefox_cookie = MagicMock()
+    firefox_cookie.domain = ".youtube.com"
+
+    firefox_ydl.cookiejar = [firefox_cookie]
 
     def create_ydl(options: dict) -> MagicMock:
         if options["cookiesfrombrowser"][0] == "chrome":
@@ -212,6 +221,81 @@ def test_find_browser_with_cookies_falls_back() -> None:
         patch(
             "ytmusic_dl.browser.detect_browser_profiles",
             return_value=browsers,
+        ),
+        patch(
+            "ytmusic_dl.browser.YoutubeDL",
+            side_effect=create_ydl,
+        ),
+    ):
+        browser = find_browser_with_cookies()
+
+    assert browser == firefox
+
+def test_has_youtube_cookies() -> None:
+    """Detect YouTube cookies in a cookie jar."""
+
+    youtube_cookie = MagicMock()
+    youtube_cookie.domain = ".youtube.com"
+
+    google_cookie = MagicMock()
+    google_cookie.domain = ".google.com"
+
+    cookiejar = [
+        google_cookie,
+        youtube_cookie,
+    ]
+
+    assert has_youtube_cookies(cookiejar) is True
+
+def test_has_youtube_cookies_returns_false() -> None:
+    """Reject cookie jars without YouTube cookies."""
+
+    google_cookie = MagicMock()
+    google_cookie.domain = ".google.com"
+
+    cookiejar = [google_cookie]
+
+    assert has_youtube_cookies(cookiejar) is False
+
+def test_find_browser_skips_browser_without_youtube_cookies() -> None:
+    """Skip browsers without YouTube cookies."""
+
+    chrome = BrowserProfile(
+        name="chrome",
+        path=Path("/fake/chrome/Default"),
+    )
+
+    firefox = BrowserProfile(
+        name="firefox",
+        path=Path("/fake/firefox/profile"),
+    )
+
+    chrome_ydl = MagicMock()
+    chrome_ydl.__enter__.return_value = chrome_ydl
+
+    chrome_cookie = MagicMock()
+    chrome_cookie.domain = ".google.com"
+
+    chrome_ydl.cookiejar = [chrome_cookie]
+
+    firefox_ydl = MagicMock()
+    firefox_ydl.__enter__.return_value = firefox_ydl
+
+    firefox_cookie = MagicMock()
+    firefox_cookie.domain = ".youtube.com"
+
+    firefox_ydl.cookiejar = [firefox_cookie]
+
+    def create_ydl(options: dict) -> MagicMock:
+        if options["cookiesfrombrowser"][0] == "chrome":
+            return chrome_ydl
+
+        return firefox_ydl
+
+    with (
+        patch(
+            "ytmusic_dl.browser.detect_browser_profiles",
+            return_value=[chrome, firefox],
         ),
         patch(
             "ytmusic_dl.browser.YoutubeDL",

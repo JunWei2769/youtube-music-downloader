@@ -5,6 +5,10 @@ from pathlib import Path
 
 from yt_dlp import YoutubeDL
 
+YOUTUBE_COOKIE_DOMAINS = {
+    ".youtube.com",
+    "youtube.com",
+}
 
 @dataclass(frozen=True)
 class BrowserProfile:
@@ -203,10 +207,18 @@ def find_browser_with_cookies() -> BrowserProfile | None:
             ) as ydl:
                 cookiejar = ydl.cookiejar
 
-                if cookiejar is not None and len(cookiejar) > 0:
+                if cookiejar is not None and has_youtube_cookies(cookiejar):
                     return browser
 
         except Exception:
             continue
 
     return None
+
+def has_youtube_cookies(cookiejar) -> bool:
+    """Return whether a cookie jar contains YouTube cookies."""
+
+    return any(
+        cookie.domain.lower() in YOUTUBE_COOKIE_DOMAINS
+        for cookie in cookiejar
+    )
