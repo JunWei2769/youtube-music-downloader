@@ -3,8 +3,14 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from ytmusic_dl.browser import BrowserProfile
 from ytmusic_dl.downloader import download_track
 from ytmusic_dl.models import Track
+
+TEST_BROWSER = BrowserProfile(
+    name="vivaldi",
+    path=Path("/fake/vivaldi/Default"),
+)
 
 def make_track() -> Track:
     return Track(
@@ -46,6 +52,7 @@ def test_download_track_mp3(tmp_path: Path) -> None:
             track,
             output_directory,
             audio_format="mp3",
+            browser=TEST_BROWSER,
         )
 
     assert result == expected_path
@@ -94,6 +101,7 @@ def test_download_track_opus(tmp_path: Path) -> None:
             track,
             output_directory,
             audio_format="opus",
+            browser=TEST_BROWSER,
         )
 
     assert result == expected_path
@@ -126,6 +134,7 @@ def test_download_track_invalid_format() -> None:
             track,
             Path("downloads/test"),
             audio_format="flac",
+            browser=TEST_BROWSER,
         )
 
 def test_extract_album_name() -> None:
@@ -163,6 +172,7 @@ def test_download_track_skips_existing(tmp_path: Path) -> None:
             track,
             output_directory,
             audio_format="mp3",
+            browser=TEST_BROWSER,
         )
 
     assert result == expected_path

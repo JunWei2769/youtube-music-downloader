@@ -19,6 +19,10 @@ from typing import cast
 
 from yt_dlp import YoutubeDL
 
+from ytmusic_dl.browser import (
+    BrowserProfile,
+    get_ytdlp_cookie_options,
+)
 from ytmusic_dl.models import Track
 from ytmusic_dl.utils import build_track_filename, ensure_directory
 
@@ -131,6 +135,8 @@ def download_track(
     track: Track,
     output_directory: Path,
     audio_format: str = "mp3",
+    *,
+    browser: BrowserProfile,
 ) -> Path:
     """Download a single track in the requested audio format."""
 
@@ -154,6 +160,8 @@ def download_track(
         track.audio_path = audio_path
         return audio_path
 
+    cookies_from_browser = get_ytdlp_cookie_options(browser)
+
     if audio_format == "mp3":
         output_template = str(output_directory / f"{filename}.%(ext)s")
 
@@ -162,8 +170,7 @@ def download_track(
             "noplaylist": True,
             "format": "bestaudio/best",
             "outtmpl": output_template,
-            # Match the working yt-dlp CLI configuration
-            "cookiesfrombrowser": ("vivaldi",),
+            "cookiesfrombrowser": cookies_from_browser,
             "forceipv4": True,
             "postprocessors": [
                 {
@@ -184,7 +191,7 @@ def download_track(
             "noplaylist": True,
             "format": "bestaudio[acodec=opus]",
             "outtmpl": output_template,
-            "cookiesfrombrowser": ("vivaldi",),
+            "cookiesfrombrowser": cookies_from_browser,
             "forceipv4": True,
             "postprocessors": [
                 {

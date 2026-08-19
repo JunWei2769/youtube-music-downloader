@@ -1,9 +1,14 @@
 from pathlib import Path
-from turtle import down
 from unittest.mock import patch
 
+from ytmusic_dl.browser import BrowserProfile
 from ytmusic_dl.models import Track, TrackResult
 from ytmusic_dl.pipeline import process_playlist
+
+TEST_BROWSER = BrowserProfile(
+    name="vivaldi",
+    path=Path("/fake/vivaldi/Default"),
+)
 
 def make_track(index: int) -> Track:
     """Create a test track."""
@@ -45,10 +50,16 @@ def test_process_playlist() -> None:
         ),
     ]
 
-    with patch(
-        "ytmusic_dl.pipeline.process_track",
-        side_effect=results,
-    ) as mock_process:
+    with (
+        patch(
+            "ytmusic_dl.pipeline.find_browser_with_cookies",
+            return_value=TEST_BROWSER,
+        ),
+        patch(
+            "ytmusic_dl.pipeline.process_track",
+            side_effect=results,
+        ) as mock_process,
+    ):
 
         result = process_playlist(
             tracks,
@@ -79,6 +90,7 @@ def test_process_playlist() -> None:
             download_lyrics=True,
             download_thumbnails=True,
             audio_format="mp3",
+            browser=TEST_BROWSER,
         )
 
 
@@ -156,10 +168,16 @@ def test_process_playlist_without_lyrics_and_thumbnails() -> None:
         ),
     ]
 
-    with patch(
-        "ytmusic_dl.pipeline.process_track",
-        side_effect=results,
-    ) as mock_process:
+    with (
+        patch(
+            "ytmusic_dl.pipeline.find_browser_with_cookies",
+            return_value=TEST_BROWSER,
+        ),
+        patch(
+            "ytmusic_dl.pipeline.process_track",
+            side_effect=results,
+        ) as mock_process,
+    ):
 
         result = process_playlist(
             tracks,
@@ -186,6 +204,7 @@ def test_process_playlist_without_lyrics_and_thumbnails() -> None:
             download_lyrics=False,
             download_thumbnails=False,
             audio_format="mp3",
+            browser=TEST_BROWSER,
         )
 
 def test_process_playlist_with_opus() -> None:
@@ -209,10 +228,16 @@ def test_process_playlist_with_opus() -> None:
         ),
     ]
 
-    with patch(
-        "ytmusic_dl.pipeline.process_track",
-        side_effect=results,
-    ) as mock_process:
+    with (
+        patch(
+            "ytmusic_dl.pipeline.find_browser_with_cookies",
+            return_value=TEST_BROWSER,
+        ),
+        patch(
+            "ytmusic_dl.pipeline.process_track",
+            side_effect=results,
+        ) as mock_process,
+    ):
 
         result = process_playlist(
             tracks,
@@ -237,6 +262,7 @@ def test_process_playlist_with_opus() -> None:
             download_lyrics=True,
             download_thumbnails=True,
             audio_format="opus",
+            browser=TEST_BROWSER,
         )
 
 def test_process_playlist_with_skipped_tracks() -> None:

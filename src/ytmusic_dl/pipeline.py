@@ -10,8 +10,11 @@ Responsibility: Application workflow
 """
 
 from pathlib import Path
-from turtle import down
 
+from ytmusic_dl.browser import (
+    BrowserProfile,
+    find_browser_with_cookies,
+)
 from ytmusic_dl.downloader import audio_file_exists, download_track
 from ytmusic_dl.lyrics import (
     find_best_lyrics,
@@ -28,6 +31,7 @@ def process_track(
     track: Track,
     output_directory: Path,
     *,
+    browser: BrowserProfile,
     download_lyrics: bool = True,
     download_thumbnails: bool = True,
     audio_format: str = "mp3",
@@ -42,6 +46,7 @@ def process_track(
         track,
         output_directory,
         audio_format=audio_format,
+        browser=browser,
     )
 
     # write MP3 metadata
@@ -129,6 +134,16 @@ def process_playlist(
 
     ensure_directory(playlist_directory)
 
+    browser = find_browser_with_cookies()
+
+    if browser is None:
+        raise RuntimeError(
+            "No supported browser with usable cookies was found. "
+            "Please log in to YouTube in a supported browser."
+        )
+
+    print(f"Using {browser.name} browser cookies")
+
     successful = 0
     failed = 0
     lyrics = 0
@@ -161,6 +176,7 @@ def process_playlist(
             result = process_track(
                 track,
                 playlist_directory,
+                browser=browser,
                 download_lyrics=download_lyrics,
                 download_thumbnails=download_thumbnails,
                 audio_format=audio_format,
