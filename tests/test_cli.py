@@ -421,6 +421,73 @@ def test_main_without_browser_uses_automatic_detection() -> None:
         audio_format="mp3",
     )
 
+def test_main_list_browsers() -> None:
+    """Test listing detected browsers."""
+
+    browsers = [
+        (
+            BrowserProfile(
+                name="vivaldi",
+                path=Path("/fake/vivaldi/Default"),
+            ),
+            True,
+        ),
+        (
+            BrowserProfile(
+                name="firefox",
+                path=Path("/fake/firefox/profile"),
+            ),
+            False,
+        ),
+    ]
+
+    with (
+        patch(
+            "ytmusic_dl.cli.list_browsers",
+            return_value=browsers,
+        ) as mock_list_browsers,
+        patch(
+            "sys.argv",
+            [
+                "ytmusic-dl",
+                "--list-browsers",
+            ],
+        ),
+    ):
+        main()
+
+    mock_list_browsers.assert_called_once()
+
+def test_main_list_browsers_none_detected() -> None:
+    """Test browser listing when no browsers are detected."""
+
+    with (
+        patch(
+            "ytmusic_dl.cli.list_browsers",
+            return_value=[],
+        ) as mock_list_browsers,
+        patch(
+            "sys.argv",
+            [
+                "ytmusic-dl",
+                "--list-browsers",
+            ],
+        ),
+    ):
+        main()
+
+    mock_list_browsers.assert_called_once()
+
+def test_main_requires_url() -> None:
+    """Test that a URL is required without --list-browsers."""
+
+    with patch(
+        "sys.argv",
+        ["ytmusic-dl"],
+    ):
+        with pytest.raises(SystemExit):
+            main()
+
 def test_build_parser_audio_format() -> None:
     """Test audio format argument."""
 

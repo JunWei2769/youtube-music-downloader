@@ -200,6 +200,21 @@ def detect_browser_profiles() -> list[BrowserProfile]:
 
     return detected
 
+def list_browsers() -> list[tuple[BrowserProfile, bool]]:
+    """Return detected browser profiles and cookie availability."""
+
+    browsers: list[tuple[BrowserProfile, bool]] = []
+
+    for browser in detect_browser_profiles():
+        browsers.append(
+            (
+                browser,
+                _browser_has_usable_cookies(browser),
+            )
+        )
+
+    return browsers
+
 def get_ytdlp_cookie_options(
     browser: BrowserProfile,
 ) -> tuple[str, str]:

@@ -7,7 +7,7 @@ Responsibility: User interaction and command-line arguments.
 import argparse
 from pathlib import Path
 
-from ytmusic_dl.browser import find_browser
+from ytmusic_dl.browser import find_browser, list_browsers
 from ytmusic_dl.downloader import extract_playlist
 from ytmusic_dl.pipeline import process_playlist
 
@@ -22,7 +22,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     parser.add_argument(
         "url",
-        help="YouTube Music playlist URL"
+        nargs="?",
+        help="YouTube Music playlist URL",
     )
 
     parser.add_argument(
@@ -66,6 +67,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Browser to use for YouTube cookies",
     )
 
+    parser.add_argument(
+        "--list-browsers",
+        action="store_true",
+        help="List detected browsers and YouTube cookie availability",
+    )
+
     return parser
 
 def main() -> None:
@@ -73,6 +80,31 @@ def main() -> None:
 
     parser = build_parser()
     args = parser.parse_args()
+
+    if args.list_browsers:
+        print("=" * 60)
+        print("Detected Browsers")
+        print("=" * 60)
+        print()
+
+        browsers = list_browsers()
+
+        if not browsers:
+            print("No browser profiles detected.")
+            return
+
+        for browser, has_cookies in browsers:
+            status = "YouTube cookies available" if has_cookies else "No usable YouTube cookies"
+
+            print(f"Browser: {browser.name}")
+            print(f"Profile: {browser.path}")
+            print(f"Status:  {status}")
+            print()
+
+        return
+
+    if not args.url:
+        parser.error("the following arguments are required: url")
 
     print("=" * 60)
     print("YouTube Music Downloader")
