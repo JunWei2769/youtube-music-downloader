@@ -24,7 +24,9 @@ A lightweight CLI tool for downloading audio from YouTube Music playlists.
 - FFmpeg
 - [Deno](https://deno.com/)
 
-Deno is required by `yt-dlp` for YouTube JavaScript challenge solving.
+Deno is required by current `yt-dlp` versions for YouTube JavaScript challenge solving.
+
+FFmpeg is required for audio conversion, remuxing, and metadata processing.
 
 ## Installation
 
@@ -72,6 +74,31 @@ curl -fsSL https://deno.land/install.sh | sh
 ```
 
 Restart your terminal or reload your shell configuration after installing Deno.
+
+#### Windows
+
+Install FFmpeg and make sure it is available in your `PATH`.
+
+Install FFmpeg:
+
+```powershell
+winget install Gyan.FFmpeg.Shared
+```
+
+Install Deno:
+
+```powershell
+irm https://deno.land/install.ps1 | iex
+```
+
+Restart your terminal after installing Deno.
+
+Verify both dependencies:
+
+```powershell
+ffmpeg -version
+deno --version
+```
 
 #### macOS
 
@@ -186,7 +213,14 @@ Profile: /home/user/.config/mozilla/firefox/xxxxxxxx.default-release
 Status:  YouTube cookies available
 ```
 
-This is useful for troubleshooting browser cookie detection.
+On Windows, Chromium-based browser profiles are detected from their `User Data` directories. For example:
+
+```text
+C:\Users\<user>\AppData\Local\Vivaldi\User Data\Default
+C:\Users\<user>\AppData\Local\Microsoft\Edge\User Data\Default
+```
+
+This command is useful for troubleshooting browser cookie detection before downloading.
 
 ### Combine options
 
@@ -232,9 +266,60 @@ To explicitly select a browser:
 ytmusic-dl "PLAYLIST_URL" --browser vivaldi
 ```
 
-The browser may need to be closed before cookies can be read successfully, depending on the browser and operating system.
+The browser may need to be completely closed before cookies can be read successfully, depending on the browser and operating system.
 
 Do not share or commit browser cookie files.
+
+### Windows
+
+Chromium-based browsers store their profiles under their `User Data` directory.
+
+Common locations include:
+
+```text
+%LOCALAPPDATA%\Google\Chrome\User Data
+%LOCALAPPDATA%\Microsoft\Edge\User Data
+%LOCALAPPDATA%\Vivaldi\User Data
+%LOCALAPPDATA%\BraveSoftware\Brave-Browser\User Data
+```
+
+Chromium cookie databases may be stored inside each profile at:
+
+```text
+<profile>\Cookies
+```
+
+or:
+
+```text
+<profile>\Network\Cookies
+```
+
+For example:
+
+```text
+C:\Users\<user>\AppData\Local\Vivaldi\User Data\Default\Network\Cookies
+```
+
+If a browser is running, its cookie database may be locked. Completely quit the browser before running:
+
+```bash
+ytmusic-dl --list-browsers
+```
+
+or downloading with:
+
+```bash
+ytmusic-dl "PLAYLIST_URL" --browser vivaldi
+```
+
+On Windows, browser profiles can be detected even when their cookies cannot be decrypted. If `--list-browsers` reports:
+
+```text
+Status:  No usable YouTube cookies
+```
+
+the issue may be related to the browser's cookie encryption or `yt-dlp`'s ability to decrypt that browser's cookies.
 
 ### macOS
 
@@ -285,6 +370,14 @@ You can verify that `yt-dlp` is using Deno by looking for:
 [youtube] [jsc:deno] Solving JS challenges using deno
 ```
 
+If the debug output contains:
+
+```text
+[debug] JS runtimes: none
+```
+
+`yt-dlp` cannot find a supported JavaScript runtime.
+
 ### YouTube cookies are not detected
 
 Run:
@@ -292,6 +385,12 @@ Run:
 ```bash
 ytmusic-dl --list-browsers
 ```
+
+If the browser is not listed:
+
+- Make sure the browser is installed.
+- Make sure the browser profile exists.
+- Make sure you are logged into YouTube or YouTube Music in that profile.
 
 If the browser is detected but shows:
 
@@ -303,8 +402,53 @@ make sure:
 
 - You are logged into YouTube or YouTube Music in the selected browser.
 - The browser profile is the profile where you are logged in.
-- The browser is closed if cookie access is blocked while it is running.
+- The browser is completely closed if cookie access is blocked while it is running.
+- On Windows, the browser's cookies can be decrypted by `yt-dlp`.
 - On macOS, the terminal application has Full Disk Access.
+
+### Browser cookie database cannot be copied
+
+If `yt-dlp` reports:
+
+```text
+Could not copy Chrome cookie database
+```
+
+completely close the browser and retry.
+
+Chromium-based browsers may keep their cookie database locked while they are running.
+
+### Windows DPAPI cookie decryption failure
+
+If `yt-dlp` reports:
+
+```text
+Failed to decrypt with DPAPI
+```
+
+the browser may be detected correctly while its cookies cannot be decrypted.
+
+This is a browser-cookie decryption issue handled by `yt-dlp`, rather than a browser profile detection issue.
+
+First make sure the browser is completely closed and retry:
+
+```bash
+ytmusic-dl --list-browsers
+```
+
+If the problem persists, test the browser directly with `yt-dlp`:
+
+```bash
+yt-dlp --cookies-from-browser edge "VIDEO_URL"
+```
+
+or:
+
+```bash
+yt-dlp --cookies-from-browser vivaldi "VIDEO_URL"
+```
+
+This helps determine whether the issue is specific to `ytmusic-dl` or to `yt-dlp`'s browser cookie handling.
 
 ### Verify Deno
 

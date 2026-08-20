@@ -41,9 +41,12 @@ def _detect_chromium_profiles(browser_path: Path) -> list[Path]:
         if not profile.is_dir():
             continue
 
-        cookie_file = profile / "Cookies"
+        cookie_files = [
+            profile / "Cookies",
+            profile / "Network" / "Cookies",
+        ]
 
-        if cookie_file.is_file():
+        if any(cookie_file.is_file() for cookie_file in cookie_files):
             profiles.append(profile)
 
     return profiles
@@ -156,18 +159,31 @@ def get_browser_path() -> dict[str, Path]:
         }
 
     if system == "Windows":
-        local_app_data = home / "AppData" / "Local"
-        roaming_app_data = home / "AppData" / "Roaming"
+        local_app_data = Path(
+            os.environ.get("LOCALAPPDATA", home / "AppData" / "Local")
+        )
+        roaming_app_data = Path(
+            os.environ.get("APPDATA", home / "AppData" / "Roaming")
+        )
 
         return {
-            "chrome": local_app_data / "Google" / "Chrome",
-            "chromium": local_app_data / "Chromium",
-            "brave": local_app_data / "BraveSoftware" / "Brave-Browser",
-            "vivaldi": local_app_data / "Vivaldi",
+            "chrome": local_app_data / "Google" / "Chrome" / "User Data",
+            "chromium": local_app_data / "Chromium" / "User Data",
+            "brave": (
+                local_app_data
+                / "BraveSoftware"
+                / "Brave-Browser"
+                / "User Data"
+            ),
+            "vivaldi": local_app_data / "Vivaldi" / "User Data",
             "firefox": roaming_app_data / "Mozilla" / "Firefox",
-            "edge": local_app_data / "Microsoft" / "Edge",
-            "opera": roaming_app_data / "Opera Software" / "Opera Stable",
-            "whale": local_app_data / "Naver" / "Whale",
+            "edge": local_app_data / "Microsoft" / "Edge" / "User Data",
+            "opera": (
+                roaming_app_data
+                / "Opera Software"
+                / "Opera Stable"
+            ),
+            "whale": local_app_data / "Naver" / "Whale" / "User Data",
         }
 
     raise RuntimeError(f"Unsupported operating system: {system}")

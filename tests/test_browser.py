@@ -111,6 +111,14 @@ def test_get_browser_path_windows(tmp_path: Path) -> None:
     with (
         patch("ytmusic_dl.browser.platform.system", return_value="Windows"),
         patch("ytmusic_dl.browser.Path.home", return_value=tmp_path),
+        patch.dict(
+            "ytmusic_dl.browser.os.environ",
+            {
+                "LOCALAPPDATA": str(tmp_path / "AppData" / "Local"),
+                "APPDATA": str(tmp_path / "AppData" / "Roaming"),
+            },
+            clear=False,
+        ),
     ):
         paths = get_browser_path()
 
@@ -123,17 +131,26 @@ def test_get_browser_path_windows(tmp_path: Path) -> None:
     )
 
     assert paths["chrome"] == (
-        local_app_data / "Google" / "Chrome"
+        local_app_data / "Google" / "Chrome" / "User Data"
+    )
+
+    assert paths["chromium"] == (
+        local_app_data / "Chromium" / "User Data"
     )
 
     assert paths["brave"] == (
         local_app_data
         / "BraveSoftware"
         / "Brave-Browser"
+        / "User Data"
     )
 
     assert paths["vivaldi"] == (
-        local_app_data / "Vivaldi"
+        local_app_data / "Vivaldi" / "User Data"
+    )
+
+    assert paths["edge"] == (
+        local_app_data / "Microsoft" / "Edge" / "User Data"
     )
 
     assert paths["firefox"] == (
