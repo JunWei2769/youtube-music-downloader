@@ -238,6 +238,19 @@ def get_ytdlp_cookie_options(
 
     return browser.name, str(browser.path)
 
+class _QuietYTDLPLogger:
+    """Suppress yt-dlp output during browser cookie checks."""
+
+    def debug(self, msg: str) -> None:
+        pass
+
+    def warning(self, msg: str) -> None:
+        pass
+
+    def error(self, msg: str) -> None:
+        pass
+
+
 def _browser_has_usable_cookies(browser: BrowserProfile) -> bool:
     """Return whether a browser profile has usable YouTube cookies."""
 
@@ -246,6 +259,7 @@ def _browser_has_usable_cookies(browser: BrowserProfile) -> bool:
             {
                 "quiet": True,
                 "no_warnings": True,
+                "logger": _QuietYTDLPLogger(),
                 "cookiesfrombrowser": get_ytdlp_cookie_options(browser),
             }
         ) as ydl:

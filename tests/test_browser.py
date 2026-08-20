@@ -3,6 +3,7 @@ from unittest.mock import MagicMock, patch
 
 from ytmusic_dl.browser import (
     BrowserProfile,
+    _browser_has_usable_cookies,
     _detect_chromium_profiles,
     _detect_firefox_profiles,
     detect_browser_profiles,
@@ -12,6 +13,43 @@ from ytmusic_dl.browser import (
     has_youtube_cookies,
 )
 
+
+def test_browser_has_usable_cookies_suppresses_yt_dlp_errors(
+    capsys,
+) -> None:
+    """Suppress yt-dlp output when browser cookie extraction fails."""
+
+    browser = BrowserProfile(
+        name="edge",
+        path=Path("C:/fake/edge/Default"),
+    )
+
+    class FailingYoutubeDL:
+        def __init__(self, *args, **kwargs):
+            logger = kwargs.get("logger")
+            assert logger is not None
+
+            logger.error("Failed to decrypt with DPAPI")
+            logger.warning("Could not copy Chrome cookie database")
+
+            raise RuntimeError("cookie extraction failed")
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    with patch(
+        "ytmusic_dl.browser.YoutubeDL",
+        FailingYoutubeDL,
+    ):
+        assert _browser_has_usable_cookies(browser) is False
+
+    captured = capsys.readouterr()
+
+    assert captured.out == ""
+    assert captured.err == ""
 
 def test_detect_chromium_profiles(tmp_path: Path) -> None:
     """Detect Chromium profiles containing a Cookies database."""
