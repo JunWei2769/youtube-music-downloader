@@ -187,7 +187,7 @@ Supported browsers include:
 - Edge
 - Opera
 
-The browser must contain usable YouTube cookies.
+The browser must contain usable YouTube cookies that can be extracted by `yt-dlp`.
 
 ### List detected browsers
 
@@ -220,7 +220,7 @@ C:\Users\<user>\AppData\Local\Vivaldi\User Data\Default
 C:\Users\<user>\AppData\Local\Microsoft\Edge\User Data\Default
 ```
 
-This command is useful for troubleshooting browser cookie detection before downloading.
+This command is useful for troubleshooting browser profile and cookie detection before downloading.
 
 ### Combine options
 
@@ -313,13 +313,29 @@ or downloading with:
 ytmusic-dl "PLAYLIST_URL" --browser vivaldi
 ```
 
-On Windows, browser profiles can be detected even when their cookies cannot be decrypted. If `--list-browsers` reports:
+#### Browser Detection vs Cookie Decryption
+
+Browser profile detection and browser cookie decryption are separate operations.
+
+`ytmusic-dl` detects browser profiles and passes the profile information to `yt-dlp`. `yt-dlp` is responsible for extracting and decrypting the browser cookies.
+
+Therefore, a browser profile can be detected successfully even when its cookies cannot be decrypted.
+
+For example:
 
 ```text
+Browser: edge
+Profile: C:\Users\<user>\AppData\Local\Microsoft\Edge\User Data\Default
 Status:  No usable YouTube cookies
 ```
 
-the issue may be related to the browser's cookie encryption or `yt-dlp`'s ability to decrypt that browser's cookies.
+This means the Edge profile was detected, but `yt-dlp` could not obtain usable YouTube cookies from it.
+
+If another supported browser works, it can be selected explicitly:
+
+```bash
+ytmusic-dl "PLAYLIST_URL" --browser vivaldi
+```
 
 ### macOS
 
@@ -403,7 +419,7 @@ make sure:
 - You are logged into YouTube or YouTube Music in the selected browser.
 - The browser profile is the profile where you are logged in.
 - The browser is completely closed if cookie access is blocked while it is running.
-- On Windows, the browser's cookies can be decrypted by `yt-dlp`.
+- On Windows, the browser's cookies can be successfully decrypted by `yt-dlp`.
 - On macOS, the terminal application has Full Disk Access.
 
 ### Browser cookie database cannot be copied
@@ -418,6 +434,12 @@ completely close the browser and retry.
 
 Chromium-based browsers may keep their cookie database locked while they are running.
 
+If the problem persists, test the browser directly with `yt-dlp`:
+
+```bash
+yt-dlp --cookies-from-browser vivaldi "VIDEO_URL"
+```
+
 ### Windows DPAPI cookie decryption failure
 
 If `yt-dlp` reports:
@@ -426,9 +448,11 @@ If `yt-dlp` reports:
 Failed to decrypt with DPAPI
 ```
 
-the browser may be detected correctly while its cookies cannot be decrypted.
+the browser profile may be detected correctly while its cookies cannot be decrypted.
 
 This is a browser-cookie decryption issue handled by `yt-dlp`, rather than a browser profile detection issue.
+
+Windows Chromium-based browsers use Windows security mechanisms to protect browser cookies. Depending on the browser and its current encryption implementation, `yt-dlp` may not be able to decrypt some browser cookies.
 
 First make sure the browser is completely closed and retry:
 
@@ -448,7 +472,15 @@ or:
 yt-dlp --cookies-from-browser vivaldi "VIDEO_URL"
 ```
 
-This helps determine whether the issue is specific to `ytmusic-dl` or to `yt-dlp`'s browser cookie handling.
+If the direct `yt-dlp` command produces the same DPAPI error, the problem is with `yt-dlp`'s browser-cookie extraction rather than `ytmusic-dl`.
+
+In this situation, use another supported browser whose cookies can be successfully extracted:
+
+```bash
+ytmusic-dl "PLAYLIST_URL" --browser vivaldi
+```
+
+`ytmusic-dl` does not attempt to bypass browser security or implement its own browser-cookie decryption. Browser cookie extraction and decryption are delegated to `yt-dlp`.
 
 ### Verify Deno
 
@@ -509,7 +541,7 @@ uv run pytest -v
 Current test status:
 
 ```text
-46 passed
+47 passed
 ```
 
 Run individual test modules when developing:
