@@ -19,9 +19,12 @@ A lightweight CLI tool for downloading audio from YouTube Music playlists.
 
 ## Requirements
 
-- Python 3.12+
+- Python 3.14+
 - [uv](https://docs.astral.sh/uv/)
 - FFmpeg
+- [Deno](https://deno.com/)
+
+Deno is required by `yt-dlp` for YouTube JavaScript challenge solving.
 
 ## Installation
 
@@ -44,19 +47,48 @@ After installation, `ytmusic-dl` is available directly from your terminal:
 ytmusic-dl --help
 ```
 
-Make sure FFmpeg is installed.
+### System Dependencies
 
-### Fedora
+Make sure FFmpeg and Deno are installed before downloading.
+
+#### Fedora
 
 ```bash
-sudo dnf install ffmpeg
+sudo dnf install ffmpeg deno
 ```
 
-### Ubuntu / Debian
+#### Ubuntu / Debian
+
+Install FFmpeg:
 
 ```bash
 sudo apt install ffmpeg
 ```
+
+Install Deno:
+
+```bash
+curl -fsSL https://deno.land/install.sh | sh
+```
+
+Restart your terminal or reload your shell configuration after installing Deno.
+
+#### macOS
+
+Using Homebrew:
+
+```bash
+brew install ffmpeg deno
+```
+
+Verify both dependencies:
+
+```bash
+ffmpeg -version
+deno --version
+```
+
+Deno must be available in your `PATH` so that `yt-dlp` can use it.
 
 ## Usage
 
@@ -127,8 +159,6 @@ Supported browsers include:
 - Firefox
 - Edge
 - Opera
-- Whale
-- Safari
 
 The browser must contain usable YouTube cookies.
 
@@ -205,6 +235,88 @@ ytmusic-dl "PLAYLIST_URL" --browser vivaldi
 The browser may need to be closed before cookies can be read successfully, depending on the browser and operating system.
 
 Do not share or commit browser cookie files.
+
+### macOS
+
+macOS may restrict terminal applications from accessing browser cookie databases.
+
+If Chrome cookies cannot be detected:
+
+1. Open **System Settings → Privacy & Security → Full Disk Access**.
+2. Enable Full Disk Access for the terminal application running `ytmusic-dl`.
+3. Completely quit and reopen the terminal.
+4. Check browser detection again:
+
+```bash
+ytmusic-dl --list-browsers
+```
+
+You should see a result similar to:
+
+```text
+Browser: chrome
+Profile: /Users/your-user/Library/Application Support/Google/Chrome/Default
+Status:  YouTube cookies available
+```
+
+## Troubleshooting
+
+### `Signature solving failed`
+
+If `yt-dlp` reports errors such as:
+
+```text
+Signature solving failed
+n challenge solving failed
+The page needs to be reloaded.
+```
+
+make sure Deno is installed and available in your `PATH`:
+
+```bash
+deno --version
+```
+
+Then retry the download.
+
+You can verify that `yt-dlp` is using Deno by looking for:
+
+```text
+[youtube] [jsc:deno] Solving JS challenges using deno
+```
+
+### YouTube cookies are not detected
+
+Run:
+
+```bash
+ytmusic-dl --list-browsers
+```
+
+If the browser is detected but shows:
+
+```text
+Status:  No usable YouTube cookies
+```
+
+make sure:
+
+- You are logged into YouTube or YouTube Music in the selected browser.
+- The browser profile is the profile where you are logged in.
+- The browser is closed if cookie access is blocked while it is running.
+- On macOS, the terminal application has Full Disk Access.
+
+### Verify Deno
+
+```bash
+deno --version
+```
+
+### Verify FFmpeg
+
+```bash
+ffmpeg -version
+```
 
 ## Output
 
