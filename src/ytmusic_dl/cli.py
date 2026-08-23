@@ -8,7 +8,7 @@ import argparse
 from pathlib import Path
 
 from ytmusic_dl.browser import find_browser, list_browsers
-from ytmusic_dl.downloader import extract_playlist
+from ytmusic_dl.downloader import extract_playlist, extract_single_track
 from ytmusic_dl.pipeline import process_playlist
 
 
@@ -17,13 +17,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     parser = argparse.ArgumentParser(
         prog="ytmusic-dl",
-        description="Download music from YouTube Music playlists.",
+        description="Download music from YouTube Music playlists or tracks."
     )
 
     parser.add_argument(
         "url",
         nargs="?",
-        help="YouTube Music playlist URL",
+        help="YouTube Music playlist or track URL",
     )
 
     parser.add_argument(
@@ -115,10 +115,15 @@ def main() -> None:
     print(f"Output: {args.output}")
     print()
 
-    print("Extracting playlist...")
+    if "list=" in args.url:
+        print("Extracting playlist...")
+        extractor = extract_playlist
+    else:
+        print("Extracting single track...")
+        extractor = extract_single_track
 
     try:
-        tracks = extract_playlist(args.url)
+        tracks = extractor(args.url)
     except Exception as error:
         print()
         print("Error: Could not extract playlist.")
@@ -157,8 +162,6 @@ def main() -> None:
             )
             return
 
-        print(f"Using {browser.name} browser cookies")
-
     else:
         browser = None
 
@@ -173,7 +176,7 @@ def main() -> None:
 
     print()
     print("=" * 60)
-    print("PLAYLIST COMPLETE")
+    print("DOWNLOAD COMPLETE")
     print("=" * 60)
     print()
 

@@ -108,12 +108,12 @@ def test_download_track_opus(tmp_path: Path) -> None:
 
     options = mock_ydl.call_args.args[0]
 
-    assert options["format"] == "bestaudio[acodec=opus]"
+    assert options["format"] == "bestaudio/best"
 
     assert options["postprocessors"] == [
         {
-            "key": "FFmpegVideoRemuxer",
-            "preferedformat": "opus",
+            "key": "FFmpegExtractAudio",
+            "preferredcodec": "opus",
         }
     ]
 

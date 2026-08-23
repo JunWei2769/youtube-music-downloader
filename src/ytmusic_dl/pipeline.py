@@ -31,7 +31,7 @@ def process_track(
     track: Track,
     output_directory: Path,
     *,
-    browser: BrowserProfile,
+    browser: BrowserProfile | None = None,
     download_lyrics: bool = True,
     download_thumbnails: bool = True,
     audio_format: str = "mp3",

@@ -136,7 +136,7 @@ def download_track(
     output_directory: Path,
     audio_format: str = "mp3",
     *,
-    browser: BrowserProfile,
+    browser: BrowserProfile | None = None,
 ) -> Path:
     """Download a single track in the requested audio format."""
 
@@ -160,7 +160,10 @@ def download_track(
         track.audio_path = audio_path
         return audio_path
 
-    cookies_from_browser = get_ytdlp_cookie_options(browser)
+    cookies_from_browser = None
+
+    if browser is not None:
+        cookies_from_browser = get_ytdlp_cookie_options(browser)
 
     if audio_format == "mp3":
         output_template = str(output_directory / f"{filename}.%(ext)s")
@@ -170,7 +173,6 @@ def download_track(
             "noplaylist": True,
             "format": "bestaudio/best",
             "outtmpl": output_template,
-            "cookiesfrombrowser": cookies_from_browser,
             "forceipv4": True,
             "postprocessors": [
                 {
@@ -181,25 +183,33 @@ def download_track(
             ],
         }
 
+        if cookies_from_browser:
+            options["cookiesfrombrowser"] = cookies_from_browser
+
         expected_path = output_directory / f"{filename}.mp3"
 
     else:
+        # Do not force native YouTube Opus formats.
+        # Some clients expose format 251 but downloads fail with HTTP 403.
+        # Let yt-dlp select a stable source and convert using FFmpeg.
         output_template = str(output_directory / f"{filename}.%(ext)s")
 
         options = {
             "quiet": False,
             "noplaylist": True,
-            "format": "bestaudio[acodec=opus]",
+            "format": "bestaudio/best",
             "outtmpl": output_template,
-            "cookiesfrombrowser": cookies_from_browser,
             "forceipv4": True,
             "postprocessors": [
                 {
-                    "key": "FFmpegVideoRemuxer",
-                    "preferedformat": "opus",
+                    "key": "FFmpegExtractAudio",
+                    "preferredcodec": "opus",
                 }
             ],
         }
+
+        if cookies_from_browser:
+            options["cookiesfrombrowser"] = cookies_from_browser
 
         expected_path = output_directory / f"{filename}.opus"
 
@@ -212,3 +222,35 @@ def download_track(
     track.audio_path = expected_path
 
     return expected_path
+
+def extract_single_track(url: str) -> list[Track]:
+    """Extract track information from a single YouTube Music URL."""
+
+    options = {
+        "quiet": True,
+        "no_warnings": True,
+        "logger": _SilentLogger(),
+        "skip_download": True,
+    }
+
+    with YoutubeDL(options) as ydl:  # type: ignore[arg-type]
+        info = ydl.extract_info(url, download=False)
+
+    if info is None:
+        return []
+
+    track = Track(
+        playlist_index=1,
+        title=cast(str, info.get("title", "Unknown")),
+        artist=(
+            cast(str | None, info.get("artist"))
+            or cast(str | None, info.get("uploader"))
+        ),
+        album=cast(str | None, info.get("album")),
+        duration=cast(float | None, info.get("duration")),
+        video_id=cast(str | None, info.get("id")),
+        webpage_url=cast(str | None, info.get("webpage_url")),
+        playlist_name=cast(str | None, info.get("title")),
+    )
+
+    return [track]
