@@ -1,10 +1,10 @@
 # YouTube Music Downloader
 
-A lightweight CLI tool for downloading audio from YouTube Music playlists.
+A lightweight CLI tool for downloading audio from YouTube Music playlists and individual tracks.
 
 ## Features
 
-- Download YouTube Music playlists
+- Download YouTube Music playlists and individual tracks
 - MP3 or Opus output
 - Embed title, artist, album, and track number
 - Embed YouTube thumbnails as album artwork
@@ -49,17 +49,17 @@ After installation, `ytmusic-dl` is available directly from your terminal:
 ytmusic-dl --help
 ```
 
-### System Dependencies
+## System Dependencies
 
 Make sure FFmpeg and Deno are installed before downloading.
 
-#### Fedora
+### Fedora
 
 ```bash
 sudo dnf install ffmpeg deno
 ```
 
-#### Ubuntu / Debian
+### Ubuntu / Debian
 
 Install FFmpeg:
 
@@ -75,7 +75,7 @@ curl -fsSL https://deno.land/install.sh | sh
 
 Restart your terminal or reload your shell configuration after installing Deno.
 
-#### Windows
+### Windows
 
 Install FFmpeg and make sure it is available in your `PATH`.
 
@@ -100,7 +100,7 @@ ffmpeg -version
 deno --version
 ```
 
-#### macOS
+### macOS
 
 Using Homebrew:
 
@@ -117,13 +117,49 @@ deno --version
 
 Deno must be available in your `PATH` so that `yt-dlp` can use it.
 
-## Usage
+# Usage
 
-### Download a playlist
+`ytmusic-dl` supports both YouTube Music playlists and individual tracks.
+
+Examples:
+
+- Playlist URL:
+  ```text
+  https://music.youtube.com/playlist?list=...
+  ```
+
+- Individual track URL:
+  ```text
+  https://music.youtube.com/watch?v=...
+  ```
+
+## Download a playlist
 
 ```bash
 ytmusic-dl "PLAYLIST_URL"
 ```
+
+## Download a single track
+
+```bash
+ytmusic-dl "TRACK_URL"
+```
+
+Example:
+
+```bash
+ytmusic-dl \
+  "https://music.youtube.com/watch?v=VIDEO_ID" \
+  --audio-format opus
+```
+
+Single track downloads use the same processing pipeline as playlists:
+
+- Audio conversion
+- Metadata embedding
+- Thumbnail embedding
+- Lyrics downloading
+- Browser cookie handling
 
 By default, audio is downloaded as MP3 into:
 
@@ -133,7 +169,7 @@ downloads/
 
 The downloader automatically looks for a browser profile containing usable YouTube cookies when they are needed.
 
-### Download as Opus
+## Download as Opus
 
 ```bash
 ytmusic-dl \
@@ -141,9 +177,9 @@ ytmusic-dl \
   --audio-format opus
 ```
 
-Opus downloads preserve the original Opus audio stream without re-encoding.
+Opus output is generated through FFmpeg audio extraction.
 
-### Custom output directory
+## Custom output directory
 
 ```bash
 ytmusic-dl \
@@ -151,7 +187,7 @@ ytmusic-dl \
   --output downloads/music
 ```
 
-### Disable lyrics
+## Disable lyrics
 
 ```bash
 ytmusic-dl \
@@ -159,7 +195,7 @@ ytmusic-dl \
   --no-lyrics
 ```
 
-### Disable thumbnails
+## Disable thumbnails
 
 ```bash
 ytmusic-dl \
@@ -167,7 +203,7 @@ ytmusic-dl \
   --no-thumbnail
 ```
 
-### Select a browser
+## Select a browser
 
 You can explicitly select a browser to use for YouTube cookies:
 
@@ -189,7 +225,7 @@ Supported browsers include:
 
 The browser must contain usable YouTube cookies that can be extracted by `yt-dlp`.
 
-### List detected browsers
+## List detected browsers
 
 To check which browser profiles are detected and whether usable YouTube cookies are available:
 
@@ -213,16 +249,9 @@ Profile: /home/user/.config/mozilla/firefox/xxxxxxxx.default-release
 Status:  YouTube cookies available
 ```
 
-On Windows, Chromium-based browser profiles are detected from their `User Data` directories. For example:
-
-```text
-C:\Users\<user>\AppData\Local\Vivaldi\User Data\Default
-C:\Users\<user>\AppData\Local\Microsoft\Edge\User Data\Default
-```
-
 This command is useful for troubleshooting browser profile and cookie detection before downloading.
 
-### Combine options
+## Combine options
 
 ```bash
 ytmusic-dl \
@@ -234,7 +263,7 @@ ytmusic-dl \
   --no-thumbnail
 ```
 
-## Options
+# Options
 
 | Option | Description |
 |---|---|
@@ -246,7 +275,7 @@ ytmusic-dl \
 | `--no-thumbnail` | Disable thumbnail embedding |
 | `-h, --help` | Show help |
 
-## Browser Cookies
+# Browser Cookies
 
 The downloader can use cookies from supported browsers through `yt-dlp`.
 
@@ -254,7 +283,7 @@ This allows the downloader to access YouTube using an existing browser session w
 
 When no browser is specified, the downloader automatically searches detected browser profiles for usable YouTube cookies.
 
-You can check the detected browser profiles with:
+You can check detected browser profiles with:
 
 ```bash
 ytmusic-dl --list-browsers
@@ -270,96 +299,6 @@ The browser may need to be completely closed before cookies can be read successf
 
 Do not share or commit browser cookie files.
 
-### Windows
-
-Chromium-based browsers store their profiles under their `User Data` directory.
-
-Common locations include:
-
-```text
-%LOCALAPPDATA%\Google\Chrome\User Data
-%LOCALAPPDATA%\Microsoft\Edge\User Data
-%LOCALAPPDATA%\Vivaldi\User Data
-%LOCALAPPDATA%\BraveSoftware\Brave-Browser\User Data
-```
-
-Chromium cookie databases may be stored inside each profile at:
-
-```text
-<profile>\Cookies
-```
-
-or:
-
-```text
-<profile>\Network\Cookies
-```
-
-For example:
-
-```text
-C:\Users\<user>\AppData\Local\Vivaldi\User Data\Default\Network\Cookies
-```
-
-If a browser is running, its cookie database may be locked. Completely quit the browser before running:
-
-```bash
-ytmusic-dl --list-browsers
-```
-
-or downloading with:
-
-```bash
-ytmusic-dl "PLAYLIST_URL" --browser vivaldi
-```
-
-#### Browser Detection vs Cookie Decryption
-
-Browser profile detection and browser cookie decryption are separate operations.
-
-`ytmusic-dl` detects browser profiles and passes the profile information to `yt-dlp`. `yt-dlp` is responsible for extracting and decrypting the browser cookies.
-
-Therefore, a browser profile can be detected successfully even when its cookies cannot be decrypted.
-
-For example:
-
-```text
-Browser: edge
-Profile: C:\Users\<user>\AppData\Local\Microsoft\Edge\User Data\Default
-Status:  No usable YouTube cookies
-```
-
-This means the Edge profile was detected, but `yt-dlp` could not obtain usable YouTube cookies from it.
-
-If another supported browser works, it can be selected explicitly:
-
-```bash
-ytmusic-dl "PLAYLIST_URL" --browser vivaldi
-```
-
-### macOS
-
-macOS may restrict terminal applications from accessing browser cookie databases.
-
-If Chrome cookies cannot be detected:
-
-1. Open **System Settings → Privacy & Security → Full Disk Access**.
-2. Enable Full Disk Access for the terminal application running `ytmusic-dl`.
-3. Completely quit and reopen the terminal.
-4. Check browser detection again:
-
-```bash
-ytmusic-dl --list-browsers
-```
-
-You should see a result similar to:
-
-```text
-Browser: chrome
-Profile: /Users/your-user/Library/Application Support/Google/Chrome/Default
-Status:  YouTube cookies available
-```
-
 ## Troubleshooting
 
 ### `Signature solving failed`
@@ -372,13 +311,11 @@ n challenge solving failed
 The page needs to be reloaded.
 ```
 
-make sure Deno is installed and available in your `PATH`:
+make sure Deno is installed:
 
 ```bash
 deno --version
 ```
-
-Then retry the download.
 
 You can verify that `yt-dlp` is using Deno by looking for:
 
@@ -386,119 +323,11 @@ You can verify that `yt-dlp` is using Deno by looking for:
 [youtube] [jsc:deno] Solving JS challenges using deno
 ```
 
-If the debug output contains:
-
-```text
-[debug] JS runtimes: none
-```
-
-`yt-dlp` cannot find a supported JavaScript runtime.
-
-### YouTube cookies are not detected
-
-Run:
-
-```bash
-ytmusic-dl --list-browsers
-```
-
-If the browser is not listed:
-
-- Make sure the browser is installed.
-- Make sure the browser profile exists.
-- Make sure you are logged into YouTube or YouTube Music in that profile.
-
-If the browser is detected but shows:
-
-```text
-Status:  No usable YouTube cookies
-```
-
-make sure:
-
-- You are logged into YouTube or YouTube Music in the selected browser.
-- The browser profile is the profile where you are logged in.
-- The browser is completely closed if cookie access is blocked while it is running.
-- On Windows, the browser's cookies can be successfully decrypted by `yt-dlp`.
-- On macOS, the terminal application has Full Disk Access.
-
-### Browser cookie database cannot be copied
-
-If `yt-dlp` reports:
-
-```text
-Could not copy Chrome cookie database
-```
-
-completely close the browser and retry.
-
-Chromium-based browsers may keep their cookie database locked while they are running.
-
-If the problem persists, test the browser directly with `yt-dlp`:
-
-```bash
-yt-dlp --cookies-from-browser vivaldi "VIDEO_URL"
-```
-
-### Windows DPAPI cookie decryption failure
-
-If `yt-dlp` reports:
-
-```text
-Failed to decrypt with DPAPI
-```
-
-the browser profile may be detected correctly while its cookies cannot be decrypted.
-
-This is a browser-cookie decryption issue handled by `yt-dlp`, rather than a browser profile detection issue.
-
-Windows Chromium-based browsers use Windows security mechanisms to protect browser cookies. Depending on the browser and its current encryption implementation, `yt-dlp` may not be able to decrypt some browser cookies.
-
-First make sure the browser is completely closed and retry:
-
-```bash
-ytmusic-dl --list-browsers
-```
-
-If the problem persists, test the browser directly with `yt-dlp`:
-
-```bash
-yt-dlp --cookies-from-browser edge "VIDEO_URL"
-```
-
-or:
-
-```bash
-yt-dlp --cookies-from-browser vivaldi "VIDEO_URL"
-```
-
-If the direct `yt-dlp` command produces the same DPAPI error, the problem is with `yt-dlp`'s browser-cookie extraction rather than `ytmusic-dl`.
-
-In this situation, use another supported browser whose cookies can be successfully extracted:
-
-```bash
-ytmusic-dl "PLAYLIST_URL" --browser vivaldi
-```
-
-`ytmusic-dl` does not attempt to bypass browser security or implement its own browser-cookie decryption. Browser cookie extraction and decryption are delegated to `yt-dlp`.
-
-### Verify Deno
-
-```bash
-deno --version
-```
-
-### Verify FFmpeg
-
-```bash
-ffmpeg -version
-```
-
 ## Output
 
-Each playlist gets its own directory.
+Each download gets its own directory based on the playlist or track name.
 
-Example:
+Example playlist:
 
 ```text
 downloads/
@@ -506,8 +335,16 @@ downloads/
     ├── 01 - 单依纯Official - 還有什麼更好的.opus
     ├── 01 - 单依纯Official - 還有什麼更好的.lrc
     ├── 02 - 单依纯Official - 純妹妹 (2025版).opus
-    ├── 02 - 单依纯Official - 純妹妹 (2025版).lrc
     └── ...
+```
+
+Example single track:
+
+```text
+downloads/
+└── 空耳 + 还你茉莉 (Live)/
+    ├── 01 - 单依纯 - 空耳 + 还你茉莉 (Live).opus
+    └── 01 - 单依纯 - 空耳 + 还你茉莉 (Live).lrc
 ```
 
 Audio files include:
@@ -520,7 +357,7 @@ Audio files include:
 
 Lyrics are saved separately as `.lrc` files when available.
 
-### Existing Tracks
+## Existing Tracks
 
 If a track already exists, it is skipped automatically:
 
@@ -530,7 +367,7 @@ Skipped: 還有什麼更好的 (audio file already exists)
 
 This makes it safe to run the same playlist again.
 
-## Testing
+# Testing
 
 Run the complete test suite:
 
@@ -544,38 +381,27 @@ Current test status:
 47 passed
 ```
 
-Run individual test modules when developing:
+# Development
 
-```bash
-uv run pytest tests/test_browser.py -v
-uv run pytest tests/test_cli.py -v
-uv run pytest tests/test_downloader.py -v
-uv run pytest tests/test_metadata.py -v
-uv run pytest tests/test_pipeline.py -v
-uv run pytest tests/test_thumbnail.py -v
-```
-
-## Development
-
-When working directly from the repository, you can run the CLI without installing it:
+Run directly from the repository:
 
 ```bash
 uv run ytmusic-dl "PLAYLIST_URL"
 ```
 
-Run the test suite:
+Run tests:
 
 ```bash
 uv run pytest -v
 ```
 
-Check for whitespace errors before committing:
+Check for whitespace errors:
 
 ```bash
 git diff --check
 ```
 
-## Legal Notice
+# Legal Notice
 
 This project is intended for personal and educational use.
 
