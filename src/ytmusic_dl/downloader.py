@@ -140,7 +140,7 @@ def download_track(
 ) -> Path:
     """Download a single track in the requested audio format."""
 
-    if audio_format not in {"mp3", "opus"}:
+    if audio_format not in {"mp3", "opus", "flac", "wav"}:
         raise ValueError(f"Unsupported audio format: {audio_format}")
 
     track_url = get_track_url(track)
@@ -165,53 +165,29 @@ def download_track(
     if browser is not None:
         cookies_from_browser = get_ytdlp_cookie_options(browser)
 
+    output_template = str(output_directory / f"{filename}.%(ext)s")
+
+    postprocessor = {
+        "key": "FFmpegExtractAudio",
+        "preferredcodec": audio_format,
+    }
+
     if audio_format == "mp3":
-        output_template = str(output_directory / f"{filename}.%(ext)s")
+        postprocessor["preferredquality"] = "0"
 
-        options = {
-            "quiet": False,
-            "noplaylist": True,
-            "format": "bestaudio/best",
-            "outtmpl": output_template,
-            "forceipv4": True,
-            "postprocessors": [
-                {
-                    "key": "FFmpegExtractAudio",
-                    "preferredcodec": "mp3",
-                    "preferredquality": "0",
-                }
-            ],
-        }
+    options = {
+        "quiet": False,
+        "noplaylist": True,
+        "format": "bestaudio/best",
+        "outtmpl": output_template,
+        "forceipv4": True,
+        "postprocessors": [postprocessor],
+    }
 
-        if cookies_from_browser:
-            options["cookiesfrombrowser"] = cookies_from_browser
+    if cookies_from_browser:
+        options["cookiesfrombrowser"] = cookies_from_browser
 
-        expected_path = output_directory / f"{filename}.mp3"
-
-    else:
-        # Do not force native YouTube Opus formats.
-        # Some clients expose format 251 but downloads fail with HTTP 403.
-        # Let yt-dlp select a stable source and convert using FFmpeg.
-        output_template = str(output_directory / f"{filename}.%(ext)s")
-
-        options = {
-            "quiet": False,
-            "noplaylist": True,
-            "format": "bestaudio/best",
-            "outtmpl": output_template,
-            "forceipv4": True,
-            "postprocessors": [
-                {
-                    "key": "FFmpegExtractAudio",
-                    "preferredcodec": "opus",
-                }
-            ],
-        }
-
-        if cookies_from_browser:
-            options["cookiesfrombrowser"] = cookies_from_browser
-
-        expected_path = output_directory / f"{filename}.opus"
+    expected_path = output_directory / f"{filename}.{audio_format}"
 
     with YoutubeDL(options) as ydl:  # type: ignore[arg-type]
         ydl.download([track_url])

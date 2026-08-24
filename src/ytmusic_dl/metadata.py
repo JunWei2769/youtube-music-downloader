@@ -15,9 +15,11 @@ Responsibility: Audio metadata / Mutagen
 
 from pathlib import Path
 
+from mutagen.flac import FLAC
 from mutagen.id3 import TALB, TIT2, TPE1, TRCK
 from mutagen.mp3 import MP3
 from mutagen.oggopus import OggOpus
+from mutagen.wave import WAVE
 
 from ytmusic_dl.models import Track
 
@@ -83,6 +85,58 @@ def write_metadata(audio_path: Path, track: Track) -> None:
 
         audio.tags["TRACKNUMBER"] = str(
             track.playlist_index
+        )
+
+        audio.save()
+
+    elif suffix == ".flac":
+        audio = FLAC(audio_path)
+
+        audio["TITLE"] = track.title
+
+        if track.artist:
+            audio["ARTIST"] = track.artist
+
+        if track.album:
+            audio["ALBUM"] = track.album
+
+        audio["TRACKNUMBER"] = str(
+            track.playlist_index
+        )
+
+        audio.save()
+
+    elif suffix == ".wav":
+        audio = WAVE(audio_path)
+
+        if audio.tags is None:
+            audio.add_tags()
+
+        if audio.tags is None:
+            raise ValueError(
+                f"Unable to initialize ID3 tags: {audio_path}"
+            )
+
+        audio.tags["TIT2"] = TIT2(
+            encoding=3,
+            text=track.title,
+        )
+
+        if track.artist:
+            audio.tags["TPE1"] = TPE1(
+                encoding=3,
+                text=track.artist,
+            )
+
+        if track.album:
+            audio.tags["TALB"] = TALB(
+                encoding=3,
+                text=track.album,
+            )
+
+        audio.tags["TRCK"] = TRCK(
+            encoding=3,
+            text=str(track.playlist_index),
         )
 
         audio.save()

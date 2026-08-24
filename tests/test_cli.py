@@ -521,7 +521,7 @@ def test_build_parser_invalid_audio_format() -> None:
             [
                 "https://music.youtube.com/playlist?list=test",
                 "--audio-format",
-                "wav",
+                "aac",
             ]
         )
 

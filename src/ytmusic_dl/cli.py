@@ -48,7 +48,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     parser.add_argument(
         "--audio-format",
-        choices=("mp3", "opus"),
+        choices=("mp3", "opus", "flac", "wav"),
         default="mp3",
         help="Audio format (default: mp3)",
     )
