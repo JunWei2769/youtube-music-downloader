@@ -34,6 +34,9 @@ MAX_DURATION_DIFFERENCE = 10.0
 
 _OPENCC = OpenCC("t2s")
 
+class NetEaseSearchUnavailable(Exception):
+    """Raised when the NetEase search API is temporarily unavailable."""
+
 class LyricsProvider(Protocol):
     """Interface implemented by lyrics providers."""
 
@@ -613,7 +616,10 @@ class NetEaseProvider:
         candidates: list[LyricsResult] = []
 
         for search_term in _build_netease_search_terms(track):
-            songs = self._search_songs(search_term)
+            try:
+                songs = self._search_songs(search_term)
+            except NetEaseSearchUnavailable:
+                break
 
             for song in songs:
                 result = _parse_netease_result(song)
@@ -670,6 +676,16 @@ class NetEaseProvider:
 
         except (httpx.HTTPError, ValueError):
             return []
+
+        if not isinstance(data, dict):
+            return []
+
+        code = data.get("code")
+
+        if code != 200:
+            raise NetEaseSearchUnavailable(
+                f"NetEase search unavailable (code {code})"
+            )
 
         songs = (
             data
