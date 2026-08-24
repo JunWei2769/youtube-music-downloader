@@ -5,6 +5,7 @@ Responsibility: User interaction and command-line arguments.
 """
 
 import argparse
+from importlib.metadata import version
 from pathlib import Path
 
 from ytmusic_dl.browser import find_browser, list_browsers
@@ -18,6 +19,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="ytmusic-dl",
         description="Download music from YouTube Music playlists or tracks."
+    )
+
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {version('youtube-music-downloader')}",
     )
 
     parser.add_argument(

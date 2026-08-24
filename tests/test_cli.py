@@ -5,6 +5,7 @@ These tests verify CLI argument parsing and application flow
 without downloading anything from YouTube.
 """
 
+from importlib.metadata import version
 from pathlib import Path
 from unittest.mock import patch
 
@@ -29,6 +30,21 @@ def test_build_parser() -> None:
 
     assert args.url == "https://music.youtube.com/playlist?list=test"
     assert args.output == Path("downloads/test")
+
+def test_version(capsys) -> None:
+    """Test the CLI version option."""
+    parser = build_parser()
+
+    with pytest.raises(SystemExit) as exc_info:
+        parser.parse_args(["--version"])
+
+    assert exc_info.value.code == 0
+
+    captured = capsys.readouterr()
+
+    assert captured.out == (
+        f"ytmusic-dl {version('youtube-music-downloader')}\n"
+    )
 
 def test_main() -> None:
     """Test the complete CLI flow without real downloads."""
