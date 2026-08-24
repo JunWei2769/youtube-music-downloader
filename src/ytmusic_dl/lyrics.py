@@ -177,19 +177,24 @@ def _artist_matches(
     track_artist: str | None,
     lyrics_artist: str | None,
 ) -> bool:
-    """Return whether the lyrics artist matches the track artist."""
-
+    """Return whether two artist names refer to the same artist."""
     if not track_artist or not lyrics_artist:
         return False
 
     def normalize_artists(value: str) -> set[str]:
-        """Normalize an artist string into comparable artist names."""
+        value = _normalize_text(value)
 
-        normalized = _normalize_text(value)
+        # YouTube Topic channels are not part of the artist name.
+        value = re.sub(
+            r"\s*-\s*topic$",
+            "",
+            value,
+            flags=re.IGNORECASE,
+        )
 
         parts = re.split(
-            r",|&|feat\.?|ft\.?|／|/|、|_aka_",
-            normalized,
+            r",|&|/|／|、|_aka_|feat\.?|ft\.?",
+            value,
         )
 
         return {
@@ -198,13 +203,53 @@ def _artist_matches(
             if part.strip()
         }
 
+    def artist_components(value: str) -> set[str]:
+        components = {value}
+
+        # Extract Chinese name components.
+        chinese_parts = re.findall(
+            r"[\u3400-\u4dbf\u4e00-\u9fff]+",
+            value,
+        )
+
+        components.update(chinese_parts)
+
+        # Extract the first Latin name component only when the
+        # artist contains both Latin and Chinese names.
+        #
+        # Example:
+        #   "lala 徐佳莹" -> "lala"
+        latin_parts = re.findall(
+            r"[a-z][a-z0-9'’.-]*",
+            value,
+            flags=re.IGNORECASE,
+        )
+
+        if chinese_parts and latin_parts:
+            components.add(latin_parts[0])
+
+        return {
+            component.strip()
+            for component in components
+            if component.strip()
+        }
+
     track_artists = normalize_artists(track_artist)
     lyrics_artists = normalize_artists(lyrics_artist)
 
     if not track_artists or not lyrics_artists:
         return False
 
-    return bool(track_artists & lyrics_artists)
+    for track_name in track_artists:
+        track_components = artist_components(track_name)
+
+        for lyrics_name in lyrics_artists:
+            lyrics_components = artist_components(lyrics_name)
+
+            if track_components & lyrics_components:
+                return True
+
+    return False
 
 def _artist_similarity(
     track_artist: str | None,
@@ -926,7 +971,6 @@ def find_best_lyrics(
     results: list[LyricsResult],
 ) -> LyricsResult | None:
     """Find the best lyrics result for a track."""
-
     if not results:
         return None
 
@@ -953,7 +997,6 @@ def find_best_lyrics(
         if title_score < 0.60:
             continue
 
-        # Reject results with a clearly different artist.
         if not _artist_matches(
             track.artist,
             result.artist_name,
@@ -968,10 +1011,9 @@ def find_best_lyrics(
         ):
             continue
 
-        score = (
-            title_score * 0.60
-            + artist_score * 0.20
-            + duration_score * 0.20
+        score = _match_score(
+            track,
+            result,
         )
 
         # Prefer synced lyrics when metadata is otherwise equivalent.

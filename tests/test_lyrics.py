@@ -216,6 +216,32 @@ def test_find_best_lyrics_accepts_bilingual_youtube_music_title() -> None:
     assert best.provider == "netease"
     assert best.provider_id == "2685528176"
 
+def test_find_best_lyrics_accepts_featured_artists_in_title() -> None:
+    track = Track(
+        playlist_index=1,
+        title="切歌 feat. ABAO阿爆 & Brandy",
+        artist="LaLa 徐佳瑩",
+        album="給",
+        duration=221,
+    )
+
+    result = make_result(
+        provider="netease",
+        provider_id="1957782394",
+        title="切歌",
+        artist="徐佳莹, LaLa Hsu, 阿爆 & Brandy",
+        duration=220.042,
+        synced="[00:01.00] Lyrics",
+    )
+
+    best = find_best_lyrics(
+        track,
+        [result],
+    )
+
+    assert best is not None
+    assert best.provider_id == "1957782394"
+
 def test_write_synced_lyrics(
     tmp_path: Path,
 ) -> None:
