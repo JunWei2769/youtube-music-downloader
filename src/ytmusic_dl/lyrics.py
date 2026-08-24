@@ -221,23 +221,20 @@ def _artist_similarity(
     if first == second:
         return 1.0
 
-    first_artists = {
-        artist.strip()
-        for artist in re.split(
-            r",|&|/| feat\.? | ft\.? ",
-            first,
+    def normalize_artists(value: str) -> set[str]:
+        parts = re.split(
+            r",|&|/|／|、|_aka_|feat\.?|ft\.?",
+            value,
         )
-        if artist.strip()
-    }
 
-    second_artists = {
-        artist.strip()
-        for artist in re.split(
-            r",|&|/| feat\.? | ft\.? ",
-            second,
-        )
-        if artist.strip()
-    }
+        return {
+            part.strip()
+            for part in parts
+            if part.strip()
+        }
+
+    first_artists = normalize_artists(first)
+    second_artists = normalize_artists(second)
 
     if first_artists and second_artists:
         overlap = first_artists & second_artists
@@ -311,6 +308,7 @@ def _match_score(
     result: LyricsResult,
 ) -> float:
     """Calculate the overall match score for a lyrics result."""
+
     title_score = _title_similarity(
         track.title,
         result.track_name,
@@ -325,6 +323,27 @@ def _match_score(
         track.duration,
         result.duration,
     )
+
+    duration_exact = (
+        track.duration is not None
+        and result.duration is not None
+        and abs(track.duration - result.duration) <= 1.0
+    )
+
+    # Strong match:
+    # - duration is essentially identical
+    # - artist has a meaningful match
+    # - title has reasonable similarity
+    #
+    # This is important for YouTube Music titles containing
+    # extra metadata such as "Official Music Video", bilingual
+    # names, version information, etc.
+    if (
+        duration_exact
+        and title_score >= 0.60
+        and artist_score >= 0.50
+    ):
+        return 1.0
 
     return (
         title_score * 0.50
@@ -521,54 +540,103 @@ def _build_netease_search_terms(track: Track) -> list[str]:
     if not title:
         return []
 
-    terms: list[str] = [
-        title,
-        _normalize_text(title),
-    ]
+    terms: list[str] = []
 
-    # Remove common live/version suffixes as a fallback.
-    simplified = re.sub(
-        r"\s*[\(\（].*?"
-        r"(live|现场|演唱会|version|版)"
-        r".*?[\)\）]",
+    def add_term(value: str) -> None:
+        value = value.strip()
+
+        if value:
+            terms.append(value)
+
+            normalized = _normalize_text(value)
+
+            if normalized:
+                terms.append(normalized)
+
+    # ---------------------------------------------------------
+    # 1. Original title
+    # ---------------------------------------------------------
+
+    add_term(title)
+
+    # ---------------------------------------------------------
+    # 2. Extract content inside YouTube-style brackets.
+    #
+    # Example:
+    # 蘇打綠 sodagreen【博物館 The Museum】（蘇打綠版）...
+    #
+    # -> 博物館 The Museum
+    # ---------------------------------------------------------
+
+    bracket_titles = re.findall(
+        r"【([^】]+)】",
+        title,
+    )
+
+    for bracket_title in bracket_titles:
+        add_term(bracket_title)
+
+    # Also support normal parentheses/brackets when useful.
+    bracket_titles = re.findall(
+        r"\[([^\]]+)\]",
+        title,
+    )
+
+    for bracket_title in bracket_titles:
+        add_term(bracket_title)
+
+    # ---------------------------------------------------------
+    # 3. Remove common YouTube metadata.
+    # ---------------------------------------------------------
+
+    search_title = re.sub(
+        r"\b"
+        r"(official\s+music\s+video|"
+        r"official\s+video|"
+        r"music\s+video)"
+        r"\b",
         "",
         title,
         flags=re.IGNORECASE,
-    ).strip()
+    )
 
-    if simplified:
-        terms.append(simplified)
-        terms.append(_normalize_text(simplified))
-
-    # Extract the title portion before the " - " separator.
-    title_part = re.split(
-        r"\s+-\s+",
-        title,
-        maxsplit=1,
-    )[0].strip()
-
-    # Remove parenthesized version/live information.
-    chinese_title = re.sub(
-        r"[\(\（].*?[\)\）]",
+    # Remove common version/live suffixes.
+    search_title = re.sub(
+        r"\s*[\(\（]"
+        r".*?"
+        r"(?:live|现场|演唱会|version|版)"
+        r".*?"
+        r"[\)\）]",
         "",
-        title_part,
-    ).strip()
+        search_title,
+        flags=re.IGNORECASE,
+    )
 
-    # Keep only Chinese characters.
+    search_title = search_title.strip()
+
+    if search_title:
+        add_term(search_title)
+
+    # ---------------------------------------------------------
+    # 4. Extract Chinese-only title.
+    # ---------------------------------------------------------
+
     chinese_title = re.sub(
         r"[^\u3400-\u4dbf\u4e00-\u9fff]+",
         "",
-        chinese_title,
+        search_title,
     )
 
     if chinese_title:
-        terms.append(chinese_title)
-        terms.append(_normalize_text(chinese_title))
+        add_term(chinese_title)
 
-    # Extract an English/Latin search term.
+    # ---------------------------------------------------------
+    # 5. Extract English/Latin title.
+    # ---------------------------------------------------------
+
     english_parts = re.findall(
         r"[A-Za-z][A-Za-z0-9'’&,\- ]*",
-        title,
+        search_title,
     )
 
     english_title = " ".join(
@@ -578,14 +646,17 @@ def _build_netease_search_terms(track: Track) -> list[str]:
     ).strip()
 
     if english_title:
-        terms.append(english_title)
+        add_term(english_title)
 
-    # Preserve order while removing duplicates.
+    # ---------------------------------------------------------
+    # Preserve order and remove duplicates.
+    # ---------------------------------------------------------
+
     return list(
         dict.fromkeys(
-            term.strip()
+            term
             for term in terms
-            if term.strip()
+            if term
         )
     )
 
@@ -640,8 +711,11 @@ class NetEaseProvider:
             return []
 
         candidates: list[LyricsResult] = []
+        seen_provider_ids: set[str] = set()
 
-        for search_term in _build_netease_search_terms(track):
+        search_terms = _build_netease_search_terms(track)
+
+        for search_term in search_terms:
             try:
                 songs = self._search_songs(search_term)
             except NetEaseSearchUnavailable:
@@ -650,10 +724,20 @@ class NetEaseProvider:
             for song in songs:
                 result = _parse_netease_result(song)
 
+                if result.provider_id in seen_provider_ids:
+                    continue
+
+                seen_provider_ids.add(result.provider_id)
+
                 if not _duration_is_acceptable(
                     track.duration,
                     result.duration,
                 ):
+                    print(
+                        f"[NetEase] Rejected: duration mismatch "
+                        f"(track={track.duration}, "
+                        f"lyrics={result.duration})"
+                    )
                     continue
 
                 score = _match_score(
@@ -662,6 +746,10 @@ class NetEaseProvider:
                 )
 
                 if score < MIN_MATCH_SCORE:
+                    print(
+                        f"[NetEase] Rejected: "
+                        f"score {score:.3f} < {MIN_MATCH_SCORE}"
+                    )
                     continue
 
                 lyrics = self._get_lyrics(
@@ -674,8 +762,7 @@ class NetEaseProvider:
                 result.synced_lyrics = lyrics
                 candidates.append(result)
 
-            if candidates:
-                break
+                return candidates
 
         return candidates
 
@@ -697,19 +784,36 @@ class NetEaseProvider:
                 },
             )
 
+            print(
+                f"[NetEase] Search: {search_term!r} "
+                f"→ HTTP {response.status_code}"
+            )
+
             response.raise_for_status()
 
             data = response.json()
 
-        except (httpx.HTTPError, ValueError):
+        except (httpx.HTTPError, ValueError) as error:
+            print(
+                f"[NetEase] Search failed for "
+                f"{search_term!r}: {error}"
+            )
             return []
 
         if not isinstance(data, dict):
+            print(
+                f"[NetEase] Invalid response for "
+                f"{search_term!r}"
+            )
             return []
 
         code = data.get("code")
 
         if code != 200:
+            print(
+                f"[NetEase] API error for "
+                f"{search_term!r}: code={code}"
+            )
             raise NetEaseSearchUnavailable(
                 f"NetEase search unavailable (code {code})"
             )
@@ -717,12 +821,25 @@ class NetEaseProvider:
         result = data.get("result")
 
         if not isinstance(result, dict):
+            print(
+                f"[NetEase] No result object for "
+                f"{search_term!r}"
+            )
             return []
 
         songs = result.get("songs", [])
 
         if not isinstance(songs, list):
+            print(
+                f"[NetEase] Invalid songs list for "
+                f"{search_term!r}"
+            )
             return []
+
+        print(
+            f"[NetEase] Search returned "
+            f"{len(songs)} songs for {search_term!r}"
+        )
 
         return [
             song
@@ -745,11 +862,21 @@ class NetEaseProvider:
                 },
             )
 
+            print(
+                f"[NetEase] Lyrics request: "
+                f"id={provider_id} "
+                f"→ HTTP {response.status_code}"
+            )
+
             response.raise_for_status()
 
             data = response.json()
 
-        except (httpx.HTTPError, ValueError):
+        except (httpx.HTTPError, ValueError) as error:
+            print(
+                f"[NetEase] Lyrics request failed "
+                f"for id={provider_id}: {error}"
+            )
             return None
 
         lyric_data = data.get("lrc") or {}
@@ -757,7 +884,16 @@ class NetEaseProvider:
         lyrics = lyric_data.get("lyric")
 
         if not lyrics:
+            print(
+                f"[NetEase] No lyrics returned "
+                f"for id={provider_id}"
+            )
             return None
+
+        print(
+            f"[NetEase] Lyrics found "
+            f"for id={provider_id}"
+        )
 
         return str(lyrics)
 
