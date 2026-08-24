@@ -182,17 +182,24 @@ def _artist_matches(
     if not track_artist or not lyrics_artist:
         return False
 
-    track_artists = {
-        part.strip().casefold()
-        for part in re.split(r",|&|feat\.?|ft\.?|／|/|、", track_artist)
-        if part.strip()
-    }
+    def normalize_artists(value: str) -> set[str]:
+        """Normalize an artist string into comparable artist names."""
 
-    lyrics_artists = {
-        part.strip().casefold()
-        for part in re.split(r",|&|feat\.?|ft\.?|／|/|、", lyrics_artist)
-        if part.strip()
-    }
+        normalized = _normalize_text(value)
+
+        parts = re.split(
+            r",|&|feat\.?|ft\.?|／|/|、|_aka_",
+            normalized,
+        )
+
+        return {
+            part.strip()
+            for part in parts
+            if part.strip()
+        }
+
+    track_artists = normalize_artists(track_artist)
+    lyrics_artists = normalize_artists(lyrics_artist)
 
     if not track_artists or not lyrics_artists:
         return False
