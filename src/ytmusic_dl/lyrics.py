@@ -24,7 +24,7 @@ from opencc import OpenCC
 from ytmusic_dl.models import Lyrics, LyricsResult, Track
 
 LRCLIB_API_URL = "https://lrclib.net/api"
-NETEASE_SEARCH_URL = "https://music.163.com/api/search/pc"
+NETEASE_SEARCH_URL = "https://music.163.com/api/cloudsearch/pc"
 NETEASE_LYRICS_URL = "https://music.163.com/api/song/lyric"
 
 USER_AGENT = "youtube-music-downloader/0.1.0"
@@ -461,25 +461,44 @@ def _parse_netease_result(
     song: dict[str, Any],
 ) -> LyricsResult:
     """Convert a NetEase song result into a LyricsResult."""
-    artists = song.get("artists") or []
 
-    artist_names = [
-        str(item.get("name", ""))
-        for item in artists
-        if item.get("name")
-    ]
+    artists = song.get("ar") or []
 
-    album = song.get("album") or {}
+    artist_names: list[str] = []
+
+    for artist in artists:
+        name = artist.get("name")
+
+        if name:
+            artist_names.append(str(name))
+
+        for alias in artist.get("alias") or []:
+            if alias:
+                artist_names.append(str(alias))
+
+    track_name = str(song.get("name", ""))
+
+    translated_names = song.get("tns") or []
+
+    if translated_names:
+        track_name = (
+            f"{track_name} "
+            f"({' / '.join(str(name) for name in translated_names)})"
+        )
+
+    album = song.get("al") or {}
 
     return LyricsResult(
         provider="netease",
         provider_id=str(song["id"]),
-        track_name=str(song.get("name", "")),
-        artist_name=", ".join(artist_names),
+        track_name=track_name,
+        artist_name=", ".join(
+            dict.fromkeys(artist_names)
+        ),
         album_name=album.get("name"),
         duration=(
-            float(song["duration"]) / 1000
-            if song.get("duration") is not None
+            float(song["dt"]) / 1000
+            if song.get("dt") is not None
             else None
         ),
         instrumental=False,
@@ -660,13 +679,14 @@ class NetEaseProvider:
         """Search NetEase for songs."""
 
         try:
-            response = self.client.get(
+            response = self.client.post(
                 NETEASE_SEARCH_URL,
-                params={
-                    "limit": 10,
+                data={
+                    "s": search_term,
                     "type": 1,
                     "offset": 0,
-                    "s": search_term,
+                    "limit": 10,
+                    "total": "true",
                 },
             )
 
@@ -687,11 +707,12 @@ class NetEaseProvider:
                 f"NetEase search unavailable (code {code})"
             )
 
-        songs = (
-            data
-            .get("result", {})
-            .get("songs", [])
-        )
+        result = data.get("result")
+
+        if not isinstance(result, dict):
+            return []
+
+        songs = result.get("songs", [])
 
         if not isinstance(songs, list):
             return []

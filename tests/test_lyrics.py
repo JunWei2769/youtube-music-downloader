@@ -3,8 +3,10 @@ from unittest.mock import MagicMock, patch
 
 from ytmusic_dl.lyrics import (
     NetEaseProvider,
+    _build_netease_search_terms,
     _duration_is_acceptable,
     _normalize_text,
+    _parse_netease_result,
     _similarity,
     find_best_lyrics,
     write_lyrics,
@@ -227,24 +229,28 @@ def test_netease_search_filters_wrong_duration() -> None:
                 {
                     "id": 1,
                     "name": "Test Song",
-                    "artists": [
-                        {"name": "Test Artist"}
+                    "ar": [
+                        {
+                            "name": "Test Artist",
+                        }
                     ],
-                    "album": {
-                        "name": "Test Album"
+                    "al": {
+                        "name": "Test Album",
                     },
-                    "duration": 200000,
+                    "dt": 200000,
                 },
                 {
                     "id": 2,
                     "name": "Test Song",
-                    "artists": [
-                        {"name": "Test Artist"}
+                    "ar": [
+                        {
+                            "name": "Test Artist",
+                        }
                     ],
-                    "album": {
-                        "name": "Test Album"
+                    "al": {
+                        "name": "Test Album",
                     },
-                    "duration": 350000,
+                    "dt": 350000,
                 },
             ]
         }
@@ -262,11 +268,18 @@ def test_netease_search_filters_wrong_duration() -> None:
     discover_response.raise_for_status.return_value = None
 
     mock_client = MagicMock()
-    mock_client.get.side_effect = [
-        discover_response,
-        search_response,
-        lyrics_response,
-    ]
+
+    def mock_get(url: str, *args, **kwargs):
+        if url == "https://music.163.com/discover":
+            return discover_response
+
+        if url == "https://music.163.com/api/song/lyric":
+            return lyrics_response
+
+        raise AssertionError(f"Unexpected GET URL: {url}")
+
+    mock_client.get.side_effect = mock_get
+    mock_client.post.return_value = search_response
 
     with patch(
         "ytmusic_dl.lyrics.httpx.Client",
@@ -274,9 +287,8 @@ def test_netease_search_filters_wrong_duration() -> None:
     ):
         provider = NetEaseProvider()
 
-        # Creating the provider must not perform network I/O.
         mock_client.get.assert_not_called()
-        assert provider.initialized is False
+        mock_client.post.assert_not_called()
 
         results = provider.search(track)
 
@@ -291,7 +303,8 @@ def test_netease_search_filters_wrong_duration() -> None:
     assert result.duration == 200.0
     assert result.synced_lyrics == "[00:01.00] Test lyrics"
 
-    assert mock_client.get.call_count == 3
+    assert mock_client.get.call_count == 2
+    assert mock_client.post.call_count == 1
 
 def test_netease_search_handles_api_error_response() -> None:
     track = make_track()
@@ -307,10 +320,8 @@ def test_netease_search_handles_api_error_response() -> None:
     }
 
     mock_client = MagicMock()
-    mock_client.get.side_effect = [
-        discover_response,
-        search_response,
-    ]
+    mock_client.get.return_value = discover_response
+    mock_client.post.return_value = search_response
 
     with patch(
         "ytmusic_dl.lyrics.httpx.Client",
@@ -321,7 +332,9 @@ def test_netease_search_handles_api_error_response() -> None:
         results = provider.search(track)
 
     assert results == []
-    assert mock_client.get.call_count == 2
+
+    assert mock_client.get.call_count == 1
+    assert mock_client.post.call_count == 1
 
 def test_netease_provider_reuses_initialized_session() -> None:
     track = make_track()
@@ -339,13 +352,9 @@ def test_netease_provider_reuses_initialized_session() -> None:
     }
 
     mock_client = MagicMock()
-    mock_client.get.side_effect = (
-        lambda *args, **kwargs: (
-            discover_response
-            if args[0] == "https://music.163.com/discover"
-            else search_response
-        )
-    )
+
+    mock_client.get.return_value = discover_response
+    mock_client.post.return_value = search_response
 
     with patch(
         "ytmusic_dl.lyrics.httpx.Client",
@@ -360,7 +369,15 @@ def test_netease_provider_reuses_initialized_session() -> None:
     assert second_results == []
 
     # /discover should only be called once.
-    assert mock_client.get.call_count == 5
+    assert mock_client.get.call_count == 1
+
+    expected_searches = len(
+        _build_netease_search_terms(track)
+    )
+
+    assert mock_client.post.call_count == (
+        expected_searches * 2
+    )
 
     discover_calls = [
         call
@@ -375,3 +392,34 @@ def test_netease_provider_reuses_initialized_session() -> None:
     assert first_call.args[0] == (
         "https://music.163.com/discover"
     )
+
+
+def test_parse_netease_cloudsearch_result() -> None:
+    song = {
+        "id": 2685528175,
+        "name": "痛快的哀艳 (苏打绿版)",
+        "tns": [
+            "Violently, the Sorrowful Glamour (sodagreen Version)"
+        ],
+        "ar": [
+            {
+                "name": "苏打绿",
+                "alias": ["sodagreen"],
+            }
+        ],
+        "al": {
+            "name": "冬 未了 (苏打绿版)",
+        },
+        "dt": 365733,
+    }
+
+    result = _parse_netease_result(song)
+
+    assert result.provider == "netease"
+    assert result.provider_id == "2685528175"
+    assert "痛快的哀艳" in result.track_name
+    assert "Violently, the Sorrowful Glamour" in result.track_name
+    assert "苏打绿" in result.artist_name
+    assert "sodagreen" in result.artist_name
+    assert result.album_name == "冬 未了 (苏打绿版)"
+    assert result.duration == 365.733
