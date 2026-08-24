@@ -181,6 +181,41 @@ def test_find_best_lyrics_accepts_aka_artist() -> None:
     assert best is not None
 
 
+def test_find_best_lyrics_accepts_bilingual_youtube_music_title() -> None:
+    track = Track(
+        playlist_index=1,
+        title=(
+            "蘇打綠 sodagreen"
+            "【博物館 The Museum】"
+            "（蘇打綠版）"
+            "Official Music Video"
+        ),
+        artist="sodagreen_aka_oaeen",
+        album="冬 未了 (蘇打綠版)",
+        duration=276,
+    )
+
+    result = make_result(
+        provider="netease",
+        provider_id="2685528176",
+        title=(
+            "博物馆 (苏打绿版) "
+            "(The Museum (sodagreen Version))"
+        ),
+        artist="苏打绿, sodagreen",
+        duration=275.893,
+        synced="[00:01.00] Lyrics",
+    )
+
+    best = find_best_lyrics(
+        track,
+        [result],
+    )
+
+    assert best is not None
+    assert best.provider == "netease"
+    assert best.provider_id == "2685528176"
+
 def test_write_synced_lyrics(
     tmp_path: Path,
 ) -> None:
@@ -327,6 +362,90 @@ def test_netease_search_filters_wrong_duration() -> None:
     assert mock_client.get.call_count == 2
     assert mock_client.post.call_count == 1
 
+def test_netease_search_accepts_bilingual_youtube_music_title() -> None:
+    track = Track(
+        playlist_index=1,
+        title=(
+            "蘇打綠 sodagreen"
+            "【博物館 The Museum】"
+            "（蘇打綠版）"
+            "Official Music Video"
+        ),
+        artist="sodagreen_aka_oaeen",
+        album="冬 未了 (蘇打綠版)",
+        duration=276,
+    )
+
+    search_response = MagicMock()
+    search_response.raise_for_status.return_value = None
+    search_response.json.return_value = {
+        "code": 200,
+        "result": {
+            "songs": [
+                {
+                    "id": 2685528176,
+                    "name": (
+                        "博物馆 (苏打绿版) "
+                        "(The Museum (sodagreen Version))"
+                    ),
+                    "ar": [
+                        {
+                            "name": "苏打绿",
+                            "alias": ["sodagreen"],
+                        }
+                    ],
+                    "al": {
+                        "name": "冬 未了 (苏打绿版)",
+                    },
+                    "dt": 275893,
+                }
+            ]
+        }
+    }
+
+    lyrics_response = MagicMock()
+    lyrics_response.raise_for_status.return_value = None
+    lyrics_response.json.return_value = {
+        "lrc": {
+            "lyric": "[00:01.00] Test lyrics"
+        }
+    }
+
+    discover_response = MagicMock()
+    discover_response.raise_for_status.return_value = None
+
+    mock_client = MagicMock()
+
+    def mock_get(url: str, *args, **kwargs):
+        if url == "https://music.163.com/discover":
+            return discover_response
+
+        if url == "https://music.163.com/api/song/lyric":
+            return lyrics_response
+
+        raise AssertionError(
+            f"Unexpected GET URL: {url}"
+        )
+
+    mock_client.get.side_effect = mock_get
+
+    mock_client.post.return_value = search_response
+
+    with patch(
+        "ytmusic_dl.lyrics.httpx.Client",
+        return_value=mock_client,
+    ):
+        provider = NetEaseProvider()
+
+        results = provider.search(track)
+
+    assert len(results) == 1
+    assert results[0].provider == "netease"
+    assert results[0].provider_id == "2685528176"
+    assert results[0].synced_lyrics == (
+        "[00:01.00] Test lyrics"
+    )
+
 def test_netease_search_handles_api_error_response() -> None:
     track = make_track()
 
@@ -356,6 +475,56 @@ def test_netease_search_handles_api_error_response() -> None:
 
     assert mock_client.get.call_count == 1
     assert mock_client.post.call_count == 1
+
+def test_netease_search_does_not_fetch_low_score_lyrics() -> None:
+    track = make_track()
+
+    search_response = MagicMock()
+    search_response.raise_for_status.return_value = None
+    search_response.json.return_value = {
+        "code": 200,
+        "result": {
+            "songs": [
+                {
+                    "id": 999,
+                    "name": "Completely Different Song",
+                    "ar": [
+                        {
+                            "name": "Completely Different Artist",
+                        }
+                    ],
+                    "al": {
+                        "name": "Different Album",
+                    },
+                    "dt": 200000,
+                }
+            ]
+        },
+    }
+
+    discover_response = MagicMock()
+    discover_response.raise_for_status.return_value = None
+
+    mock_client = MagicMock()
+
+    mock_client.get.return_value = discover_response
+    mock_client.post.return_value = search_response
+
+    with patch(
+        "ytmusic_dl.lyrics.httpx.Client",
+        return_value=mock_client,
+    ):
+        provider = NetEaseProvider()
+
+        results = provider.search(track)
+
+    assert results == []
+
+    # Only the initialization GET request should have been made.
+    assert mock_client.get.call_count == 1
+
+    # NetEase search should happen, but lyrics should never be fetched.
+    assert mock_client.post.call_count >= 1
 
 def test_netease_provider_reuses_initialized_session() -> None:
     track = make_track()
