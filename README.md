@@ -9,6 +9,9 @@ A lightweight CLI tool for downloading audio from YouTube Music playlists and in
 - Embed title, artist, album, and track number
 - Embed YouTube thumbnails as album artwork
 - Search and save lyrics as `.lrc` files
+- Multiple lyrics providers with automatic fallback
+- Validate lyrics matches using title, artist, and duration
+- Prefer synchronized lyrics when available
 - Automatically skip existing tracks
 - Automatic browser cookie detection
 - Select a specific browser for YouTube cookies
@@ -117,29 +120,31 @@ deno --version
 
 Deno must be available in your `PATH` so that `yt-dlp` can use it.
 
-# Usage
+## Usage
 
 `ytmusic-dl` supports both YouTube Music playlists and individual tracks.
 
 Examples:
 
 - Playlist URL:
+
   ```text
   https://music.youtube.com/playlist?list=...
   ```
 
 - Individual track URL:
+
   ```text
   https://music.youtube.com/watch?v=...
   ```
 
-## Download a playlist
+### Download a playlist
 
 ```bash
 ytmusic-dl "PLAYLIST_URL"
 ```
 
-## Download a single track
+### Download a single track
 
 ```bash
 ytmusic-dl "TRACK_URL"
@@ -169,7 +174,7 @@ downloads/
 
 The downloader automatically looks for a browser profile containing usable YouTube cookies when they are needed.
 
-## Download as Opus
+### Download as Opus
 
 ```bash
 ytmusic-dl \
@@ -179,7 +184,7 @@ ytmusic-dl \
 
 Opus output is generated through FFmpeg audio extraction.
 
-## Custom output directory
+### Custom output directory
 
 ```bash
 ytmusic-dl \
@@ -187,7 +192,7 @@ ytmusic-dl \
   --output downloads/music
 ```
 
-## Disable lyrics
+### Disable lyrics
 
 ```bash
 ytmusic-dl \
@@ -195,7 +200,7 @@ ytmusic-dl \
   --no-lyrics
 ```
 
-## Disable thumbnails
+### Disable thumbnails
 
 ```bash
 ytmusic-dl \
@@ -203,17 +208,68 @@ ytmusic-dl \
   --no-thumbnail
 ```
 
-## Select a browser
+## Lyrics
 
-You can explicitly select a browser to use for YouTube cookies:
+The downloader supports multiple lyrics providers.
 
-```bash
-ytmusic-dl \
-  "PLAYLIST_URL" \
-  --browser vivaldi
+The current provider order is:
+
+1. **LRCLIB**
+2. **NetEase Cloud Music**
+
+The downloader searches multiple lyrics providers and selects the best validated result.
+
+Lyrics candidates are validated using:
+
+- Track title similarity
+- Artist matching
+- Track duration
+- Lyrics availability
+
+When multiple suitable results are available, synchronized lyrics are preferred.
+
+Lyrics are saved as separate `.lrc` files alongside the downloaded audio.
+
+Example:
+
+```text
+downloads/
+└── 空耳 + 还你茉莉 (Live)/
+    ├── 01 - 单依纯 - 空耳 + 还你茉莉 (Live).opus
+    └── 01 - 单依纯 - 空耳 + 还你茉莉 (Live).lrc
 ```
 
-Supported browsers include:
+If no suitable lyrics are found, the audio download continues without creating an `.lrc` file.
+
+You can disable lyrics completely with:
+
+```bash
+ytmusic-dl "PLAYLIST_URL" --no-lyrics
+```
+
+## Browser Cookies
+
+The downloader can use cookies from supported browsers through `yt-dlp`.
+
+This allows the downloader to access YouTube using an existing browser session when necessary.
+
+When no browser is specified, the downloader automatically searches detected browser profiles for usable YouTube cookies.
+
+You can check detected browser profiles with:
+
+```bash
+ytmusic-dl --list-browsers
+```
+
+To explicitly select a browser:
+
+```bash
+ytmusic-dl "PLAYLIST_URL" --browser vivaldi
+```
+
+### Supported Browsers
+
+The downloader can detect profiles from browsers including:
 
 - Vivaldi
 - Chrome
@@ -223,11 +279,13 @@ Supported browsers include:
 - Edge
 - Opera
 
-The browser must contain usable YouTube cookies that can be extracted by `yt-dlp`.
+Whether usable YouTube cookies are available depends on the browser profile, operating system, and browser state.
 
-## List detected browsers
+The browser may need to be completely closed before cookies can be read successfully, depending on the browser and operating system.
 
-To check which browser profiles are detected and whether usable YouTube cookies are available:
+Do not share or commit browser cookie files.
+
+### List Detected Browsers
 
 ```bash
 ytmusic-dl --list-browsers
@@ -251,7 +309,19 @@ Status:  YouTube cookies available
 
 This command is useful for troubleshooting browser profile and cookie detection before downloading.
 
-## Combine options
+## Options
+
+| Option | Description |
+| --- | --- |
+| `--output DIR` | Output directory. Default: `downloads` |
+| `--audio-format FORMAT` | Audio format: `mp3` or `opus` |
+| `--browser BROWSER` | Browser to use for YouTube cookies |
+| `--list-browsers` | List detected browsers and YouTube cookie availability |
+| `--no-lyrics` | Disable lyrics downloading |
+| `--no-thumbnail` | Disable thumbnail embedding |
+| `-h, --help` | Show help |
+
+## Combine Options
 
 ```bash
 ytmusic-dl \
@@ -262,42 +332,6 @@ ytmusic-dl \
   --no-lyrics \
   --no-thumbnail
 ```
-
-# Options
-
-| Option | Description |
-|---|---|
-| `--output DIR` | Output directory. Default: `downloads` |
-| `--audio-format FORMAT` | Audio format: `mp3` or `opus` |
-| `--browser BROWSER` | Browser to use for YouTube cookies |
-| `--list-browsers` | List detected browsers and YouTube cookie availability |
-| `--no-lyrics` | Disable lyrics downloading |
-| `--no-thumbnail` | Disable thumbnail embedding |
-| `-h, --help` | Show help |
-
-# Browser Cookies
-
-The downloader can use cookies from supported browsers through `yt-dlp`.
-
-This allows the downloader to access YouTube using an existing browser session when necessary.
-
-When no browser is specified, the downloader automatically searches detected browser profiles for usable YouTube cookies.
-
-You can check detected browser profiles with:
-
-```bash
-ytmusic-dl --list-browsers
-```
-
-To explicitly select a browser:
-
-```bash
-ytmusic-dl "PLAYLIST_URL" --browser vivaldi
-```
-
-The browser may need to be completely closed before cookies can be read successfully, depending on the browser and operating system.
-
-Do not share or commit browser cookie files.
 
 ## Troubleshooting
 
@@ -355,7 +389,7 @@ Audio files include:
 - Track number
 - Embedded thumbnail
 
-Lyrics are saved separately as `.lrc` files when available.
+Lyrics are saved separately as `.lrc` files when suitable lyrics are available.
 
 ## Existing Tracks
 
@@ -367,7 +401,7 @@ Skipped: 還有什麼更好的 (audio file already exists)
 
 This makes it safe to run the same playlist again.
 
-# Testing
+## Testing
 
 Run the complete test suite:
 
@@ -378,10 +412,16 @@ uv run pytest -v
 Current test status:
 
 ```text
-47 passed
+59 passed
 ```
 
-# Development
+You can also run the lyrics-specific tests:
+
+```bash
+uv run pytest tests/test_lyrics.py -v
+```
+
+## Development
 
 Run directly from the repository:
 
@@ -401,7 +441,7 @@ Check for whitespace errors:
 git diff --check
 ```
 
-# Legal Notice
+## Legal Notice
 
 This project is intended for personal and educational use.
 

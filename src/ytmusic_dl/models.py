@@ -36,9 +36,10 @@ class Lyrics:
 
 @dataclass
 class LyricsResult:
-    """Lyrics information returned by LRCLIB."""
+    """Lyrics information returned by a lyrics provider."""
 
-    lrclib_id: int
+    provider: str
+    provider_id: str
     track_name: str
     artist_name: str
     album_name: str | None
