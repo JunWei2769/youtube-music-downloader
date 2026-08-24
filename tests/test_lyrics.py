@@ -159,6 +159,27 @@ def test_find_best_lyrics_accepts_artist_collaboration() -> None:
 
     assert best is not None
 
+def test_find_best_lyrics_accepts_aka_artist() -> None:
+    track = Track(
+        playlist_index=1,
+        title="Test Song",
+        artist="sodagreen_aka_oaeen",
+        album="Test Album",
+        duration=200,
+    )
+
+    result = make_result(
+        artist="苏打绿, sodagreen",
+        synced="[00:01.00] Lyrics",
+    )
+
+    best = find_best_lyrics(
+        track,
+        [result],
+    )
+
+    assert best is not None
+
 
 def test_write_synced_lyrics(
     tmp_path: Path,
