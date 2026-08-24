@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 import httpx
+from opencc import OpenCC
 
 from ytmusic_dl.models import Lyrics, LyricsResult, Track
 
@@ -31,6 +32,8 @@ USER_AGENT = "youtube-music-downloader/0.1.0"
 MIN_MATCH_SCORE = 0.75
 MAX_DURATION_DIFFERENCE = 10.0
 
+_OPENCC = OpenCC("t2s")
+
 class LyricsProvider(Protocol):
     """Interface implemented by lyrics providers."""
 
@@ -41,7 +44,7 @@ class LyricsProvider(Protocol):
         ...
 
 def _normalize_text(value: str | None) -> str:
-    """Normalize test for lyrics matching."""
+    """Normalize text for lyrics matching."""
     if not value:
         return ""
 
@@ -66,10 +69,88 @@ def _normalize_text(value: str | None) -> str:
     for old, new in replacements.items():
         normalized = normalized.replace(old, new)
 
+    # Normalize Traditional Chinese to Simplified Chinese.
+    normalized = _OPENCC.convert(normalized)
+
     normalized = re.sub(r"\s+", " ", normalized)
     normalized = re.sub(r"\s*([+&,/])\s*", r"\1", normalized)
 
     return normalized.strip()
+
+def _build_title_variants(title: str) -> list[str]:
+    """Build alternative title forms for lyrics matching."""
+    title = title.strip()
+
+    if not title:
+        return []
+
+    variants: list[str] = [
+        title,
+        _normalize_text(title),
+    ]
+
+    # Remove common live/version suffixes.
+    simplified = re.sub(
+        r"\s*[\(\（].*?"
+        r"(live|现场|演唱会|version|版)"
+        r".*?[\)\）]",
+        "",
+        title,
+        flags=re.IGNORECASE,
+    ).strip()
+
+    if simplified:
+        variants.append(simplified)
+        variants.append(_normalize_text(simplified))
+
+    # Extract the title portion before the " - " separator.
+    title_part = re.split(
+        r"\s+-\s+",
+        title,
+        maxsplit=1,
+    )[0].strip()
+
+    # Remove parenthesized version/live information.
+    chinese_title = re.sub(
+        r"[\(\（].*?[\)\）]",
+        "",
+        title_part,
+    ).strip()
+
+    # Keep only Chinese characters.
+    chinese_title = re.sub(
+        r"[^\u3400-\u4dbf\u4e00-\u9fff]+",
+        "",
+        chinese_title,
+    )
+
+    if chinese_title:
+        variants.append(chinese_title)
+        variants.append(_normalize_text(chinese_title))
+
+    # Extract English/Latin title.
+    english_parts = re.findall(
+        r"[A-Za-z][A-Za-z0-9'’&,\- ]*",
+        title,
+    )
+
+    english_title = " ".join(
+        part.strip()
+        for part in english_parts
+        if part.strip()
+    ).strip()
+
+    if english_title:
+        variants.append(english_title)
+        variants.append(_normalize_text(english_title))
+
+    return list(
+        dict.fromkeys(
+            variant.strip()
+            for variant in variants
+            if variant.strip()
+        )
+    )
 
 def _similarity(first: str, second: str) -> float:
     """Return a similarity score between two strings."""
@@ -195,13 +276,32 @@ def _duration_is_acceptable(
         <= MAX_DURATION_DIFFERENCE
     )
 
+def _title_similarity(
+    track_title: str | None,
+    result_title: str | None,
+) -> float:
+    """Return the best similarity across title variants."""
+    if not track_title or not result_title:
+        return 0.0
+
+    track_variants = _build_title_variants(track_title)
+    result_variants = _build_title_variants(result_title)
+
+    return max(
+        (
+            _similarity(track_variant, result_variant)
+            for track_variant in track_variants
+            for result_variant in result_variants
+        ),
+        default=0.0,
+    )
+
 def _match_score(
     track: Track,
     result: LyricsResult,
 ) -> float:
     """Calculate the overall match score for a lyrics result."""
-
-    title_score = _similarity(
+    title_score = _title_similarity(
         track.title,
         result.track_name,
     )
@@ -386,16 +486,22 @@ def _parse_netease_result(
 
 def _build_netease_search_terms(track: Track) -> list[str]:
     """Build progressively simplified NetEase search queries."""
+
     title = track.title.strip()
 
-    terms = [
+    if not title:
+        return []
+
+    terms: list[str] = [
         title,
         _normalize_text(title),
     ]
 
     # Remove common live/version suffixes as a fallback.
     simplified = re.sub(
-        r"\s*[\(\（].*?(live|现场|演唱会).*?[\)\）]",
+        r"\s*[\(\（].*?"
+        r"(live|现场|演唱会|version|版)"
+        r".*?[\)\）]",
         "",
         title,
         flags=re.IGNORECASE,
@@ -403,9 +509,56 @@ def _build_netease_search_terms(track: Track) -> list[str]:
 
     if simplified:
         terms.append(simplified)
+        terms.append(_normalize_text(simplified))
+
+    # Extract the title portion before the " - " separator.
+    title_part = re.split(
+        r"\s+-\s+",
+        title,
+        maxsplit=1,
+    )[0].strip()
+
+    # Remove parenthesized version/live information.
+    chinese_title = re.sub(
+        r"[\(\（].*?[\)\）]",
+        "",
+        title_part,
+    ).strip()
+
+    # Keep only Chinese characters.
+    chinese_title = re.sub(
+        r"[^\u3400-\u4dbf\u4e00-\u9fff]+",
+        "",
+        chinese_title,
+    )
+
+    if chinese_title:
+        terms.append(chinese_title)
+        terms.append(_normalize_text(chinese_title))
+
+    # Extract an English/Latin search term.
+    english_parts = re.findall(
+        r"[A-Za-z][A-Za-z0-9'’&,\- ]*",
+        title,
+    )
+
+    english_title = " ".join(
+        part.strip()
+        for part in english_parts
+        if part.strip()
+    ).strip()
+
+    if english_title:
+        terms.append(english_title)
 
     # Preserve order while removing duplicates.
-    return list(dict.fromkeys(term for term in terms if term))
+    return list(
+        dict.fromkeys(
+            term.strip()
+            for term in terms
+            if term.strip()
+        )
+    )
 
 class NetEaseProvider:
     """NetEase Cloud Music lyrics provider."""
@@ -601,7 +754,7 @@ def find_best_lyrics(
     best_score = 0.0
 
     for result in results:
-        title_score = _similarity(
+        title_score = _title_similarity(
             track.title,
             result.track_name,
         )
