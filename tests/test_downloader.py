@@ -121,6 +121,103 @@ def test_download_track_opus(tmp_path: Path) -> None:
         [track.webpage_url]
     )
 
+def test_download_track_flac(tmp_path: Path) -> None:
+    """Test FLAC download configuration."""
+
+    track = make_track()
+    output_directory = tmp_path / "downloads"
+
+    expected_path = (
+        output_directory
+        / "01 - Test Artist - Test Song.flac"
+    )
+
+    with (
+        patch("ytmusic_dl.downloader.YoutubeDL") as mock_ydl,
+        patch("ytmusic_dl.downloader.ensure_directory"),
+    ):
+        mock_instance = MagicMock()
+        mock_ydl.return_value.__enter__.return_value = mock_instance
+
+        def fake_download(urls):
+            expected_path.parent.mkdir(parents=True, exist_ok=True)
+            expected_path.touch()
+
+        mock_instance.download.side_effect = fake_download
+
+        result = download_track(
+            track,
+            output_directory,
+            audio_format="flac",
+            browser=TEST_BROWSER,
+        )
+
+    assert result == expected_path
+
+    options = mock_ydl.call_args.args[0]
+
+    assert options["format"] == "bestaudio/best"
+
+    assert options["postprocessors"] == [
+        {
+            "key": "FFmpegExtractAudio",
+            "preferredcodec": "flac",
+        }
+    ]
+
+    mock_instance.download.assert_called_once_with(
+        [track.webpage_url]
+    )
+
+
+def test_download_track_wav(tmp_path: Path) -> None:
+    """Test WAV download configuration."""
+
+    track = make_track()
+    output_directory = tmp_path / "downloads"
+
+    expected_path = (
+        output_directory
+        / "01 - Test Artist - Test Song.wav"
+    )
+
+    with (
+        patch("ytmusic_dl.downloader.YoutubeDL") as mock_ydl,
+        patch("ytmusic_dl.downloader.ensure_directory"),
+    ):
+        mock_instance = MagicMock()
+        mock_ydl.return_value.__enter__.return_value = mock_instance
+
+        def fake_download(urls):
+            expected_path.parent.mkdir(parents=True, exist_ok=True)
+            expected_path.touch()
+
+        mock_instance.download.side_effect = fake_download
+
+        result = download_track(
+            track,
+            output_directory,
+            audio_format="wav",
+            browser=TEST_BROWSER,
+        )
+
+    assert result == expected_path
+
+    options = mock_ydl.call_args.args[0]
+
+    assert options["format"] == "bestaudio/best"
+
+    assert options["postprocessors"] == [
+        {
+            "key": "FFmpegExtractAudio",
+            "preferredcodec": "wav",
+        }
+    ]
+
+    mock_instance.download.assert_called_once_with(
+        [track.webpage_url]
+    )
+
 def test_download_track_invalid_format() -> None:
     """Test that unsupported audio formats are rejected."""
 
@@ -133,7 +230,7 @@ def test_download_track_invalid_format() -> None:
         download_track(
             track,
             Path("downloads/test"),
-            audio_format="flac",
+            audio_format="aac",
             browser=TEST_BROWSER,
         )
 

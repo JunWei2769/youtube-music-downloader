@@ -2,9 +2,11 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from mutagen.flac import FLAC
 from mutagen.id3 import ID3
 from mutagen.mp3 import MP3
 from mutagen.oggopus import OggOpus
+from mutagen.wave import WAVE
 
 from ytmusic_dl.metadata import write_metadata
 from ytmusic_dl.models import Track
@@ -95,11 +97,55 @@ def test_write_metadata_opus(tmp_path: Path) -> None:
     assert audio.tags["ALBUM"] == ["Test Album"]
     assert audio.tags["TRACKNUMBER"] == ["3"]
 
+def test_write_metadata_flac(tmp_path: Path) -> None:
+    """Test writing metadata to a FLAC file."""
+
+    audio_path = tmp_path / "test.flac"
+
+    create_audio_fixture(
+        audio_path,
+        "flac",
+    )
+
+    track = make_track()
+
+    write_metadata(audio_path, track)
+
+    audio = FLAC(audio_path)
+
+    assert audio["TITLE"] == ["Test Song"]
+    assert audio["ARTIST"] == ["Test Artist"]
+    assert audio["ALBUM"] == ["Test Album"]
+    assert audio["TRACKNUMBER"] == ["3"]
+
+def test_write_metadata_wav(tmp_path: Path) -> None:
+    """Test writing metadata to a WAV file."""
+
+    audio_path = tmp_path / "test.wav"
+
+    create_audio_fixture(
+        audio_path,
+        "pcm_s16le",
+    )
+
+    track = make_track()
+
+    write_metadata(audio_path, track)
+
+    audio = WAVE(audio_path)
+
+    assert audio.tags is not None
+
+    assert audio.tags["TIT2"].text == ["Test Song"]
+    assert audio.tags["TPE1"].text == ["Test Artist"]
+    assert audio.tags["TALB"].text == ["Test Album"]
+    assert audio.tags["TRCK"].text == ["3"]
+
 
 def test_write_metadata_unsupported_format(tmp_path: Path) -> None:
     """Test rejection of unsupported audio formats."""
 
-    audio_path = tmp_path / "test.flac"
+    audio_path = tmp_path / "test.aac"
 
     track = make_track()
 
