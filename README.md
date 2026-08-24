@@ -5,7 +5,7 @@ A lightweight CLI tool for downloading audio from YouTube Music playlists and in
 ## Features
 
 - Download YouTube Music playlists and individual tracks
-- MP3 or Opus output
+- MP3, Opus, FLAC, or WAV output
 - Embed title, artist, album, and track number
 - Embed YouTube thumbnails as album artwork
 - Search and save lyrics as `.lrc` files
@@ -29,7 +29,7 @@ A lightweight CLI tool for downloading audio from YouTube Music playlists and in
 
 Deno is required by current `yt-dlp` versions for YouTube JavaScript challenge solving.
 
-FFmpeg is required for audio conversion, remuxing, and metadata processing.
+FFmpeg is required for audio conversion, remuxing, metadata processing, and audio format conversion.
 
 ## Installation
 
@@ -174,6 +174,27 @@ downloads/
 
 The downloader automatically looks for a browser profile containing usable YouTube cookies when they are needed.
 
+### Audio Formats
+
+The downloader supports four output formats:
+
+- MP3
+- Opus
+- FLAC
+- WAV
+
+All formats are processed through FFmpeg and receive the same metadata and thumbnail processing pipeline supported by the application.
+
+### Download as MP3
+
+MP3 is the default format:
+
+```bash
+ytmusic-dl \
+  "PLAYLIST_URL" \
+  --audio-format mp3
+```
+
 ### Download as Opus
 
 ```bash
@@ -183,6 +204,28 @@ ytmusic-dl \
 ```
 
 Opus output is generated through FFmpeg audio extraction.
+
+### Download as FLAC
+
+```bash
+ytmusic-dl \
+  "PLAYLIST_URL" \
+  --audio-format flac
+```
+
+FLAC output is generated through FFmpeg audio extraction and supports embedded metadata and album artwork.
+
+### Download as WAV
+
+```bash
+ytmusic-dl \
+  "PLAYLIST_URL" \
+  --audio-format wav
+```
+
+WAV output is generated through FFmpeg audio extraction and supports embedded ID3 metadata and album artwork.
+
+> Note: Converting YouTube audio to FLAC or WAV does not increase the original source quality. These formats preserve the decoded audio without additional lossy compression, but they cannot restore information that was not present in the original YouTube stream.
 
 ### Custom output directory
 
@@ -311,22 +354,22 @@ This command is useful for troubleshooting browser profile and cookie detection 
 
 ## Options
 
-| Option | Description |
-| --- | --- |
-| `--output DIR` | Output directory. Default: `downloads` |
-| `--audio-format FORMAT` | Audio format: `mp3` or `opus` |
-| `--browser BROWSER` | Browser to use for YouTube cookies |
-| `--list-browsers` | List detected browsers and YouTube cookie availability |
-| `--no-lyrics` | Disable lyrics downloading |
-| `--no-thumbnail` | Disable thumbnail embedding |
-| `-h, --help` | Show help |
+| Option                  | Description                                                         |
+| ----------------------- | ------------------------------------------------------------------- |
+| `--output DIR`          | Output directory. Default: `downloads`                              |
+| `--audio-format FORMAT` | Audio format: `mp3`, `opus`, `flac`, or `wav`                       |
+| `--browser BROWSER`     | Browser to use for YouTube cookies                                  |
+| `--list-browsers`       | List detected browsers and YouTube cookie availability              |
+| `--no-lyrics`           | Disable lyrics downloading                                          |
+| `--no-thumbnail`        | Disable thumbnail embedding                                         |
+| `-h, --help`            | Show help                                                           |
 
 ## Combine Options
 
 ```bash
 ytmusic-dl \
   "PLAYLIST_URL" \
-  --audio-format opus \
+  --audio-format flac \
   --output downloads/music \
   --browser vivaldi \
   --no-lyrics \
@@ -381,6 +424,24 @@ downloads/
     └── 01 - 单依纯 - 空耳 + 还你茉莉 (Live).lrc
 ```
 
+The same output structure is used regardless of the selected audio format.
+
+For example, a FLAC download:
+
+```text
+downloads/
+└── Album - 光波/
+    └── 01 - 单依纯Official - 光波.flac
+```
+
+A WAV download:
+
+```text
+downloads/
+└── Album - 光波/
+    └── 01 - 单依纯Official - 光波.wav
+```
+
 Audio files include:
 
 - Title
@@ -388,6 +449,13 @@ Audio files include:
 - Album
 - Track number
 - Embedded thumbnail
+
+Metadata and artwork are embedded using format-appropriate tagging:
+
+- MP3 — ID3 metadata and APIC artwork
+- Opus — Vorbis comments and embedded artwork
+- FLAC — Vorbis comments and embedded FLAC picture metadata
+- WAV — ID3 metadata and APIC artwork
 
 Lyrics are saved separately as `.lrc` files when suitable lyrics are available.
 
@@ -412,8 +480,19 @@ uv run pytest -v
 Current test status:
 
 ```text
-59 passed
+65 passed
 ```
+
+The test suite covers:
+
+- Browser detection
+- CLI argument parsing
+- Audio downloading
+- MP3, Opus, FLAC, and WAV output configuration
+- Lyrics providers and matching
+- Metadata embedding
+- Thumbnail embedding
+- Download pipeline behavior
 
 You can also run the lyrics-specific tests:
 
