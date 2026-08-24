@@ -221,6 +221,7 @@ def test_netease_search_filters_wrong_duration() -> None:
     search_response = MagicMock()
     search_response.raise_for_status.return_value = None
     search_response.json.return_value = {
+        "code": 200,
         "result": {
             "songs": [
                 {
@@ -292,6 +293,36 @@ def test_netease_search_filters_wrong_duration() -> None:
 
     assert mock_client.get.call_count == 3
 
+def test_netease_search_handles_api_error_response() -> None:
+    track = make_track()
+
+    discover_response = MagicMock()
+    discover_response.raise_for_status.return_value = None
+
+    search_response = MagicMock()
+    search_response.raise_for_status.return_value = None
+    search_response.json.return_value = {
+        "code": -462,
+        "msg": "操作频繁，请稍候再试",
+    }
+
+    mock_client = MagicMock()
+    mock_client.get.side_effect = [
+        discover_response,
+        search_response,
+    ]
+
+    with patch(
+        "ytmusic_dl.lyrics.httpx.Client",
+        return_value=mock_client,
+    ):
+        provider = NetEaseProvider()
+
+        results = provider.search(track)
+
+    assert results == []
+    assert mock_client.get.call_count == 2
+
 def test_netease_provider_reuses_initialized_session() -> None:
     track = make_track()
 
@@ -301,6 +332,7 @@ def test_netease_provider_reuses_initialized_session() -> None:
     search_response = MagicMock()
     search_response.raise_for_status.return_value = None
     search_response.json.return_value = {
+        "code": 200,
         "result": {
             "songs": []
         }
