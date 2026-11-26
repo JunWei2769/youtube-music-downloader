@@ -132,6 +132,40 @@ def _build_title_variants(title: str) -> list[str]:
         variants.append(noise_free)
         variants.append(_normalize_text(noise_free))
 
+    # Bracketed segments often hold the real song title, especially
+    # for Chinese uploads: "Artist [ 山丘 ] Official Video",
+    # "【Artist《Song A》+《Song B》】...".
+    for pattern in (
+        r"【([^】]+)】",
+        r"\[([^\]]+)\]",
+        r"《([^》]+)》",
+    ):
+        for content in re.findall(pattern, title):
+            content = content.strip()
+
+            if not content or len(content) > 100:
+                continue
+
+            if NOISE_PATTERN.fullmatch(content):
+                continue
+
+            if _extract_editions(f"({content})"):
+                continue
+
+            variants.append(content)
+            variants.append(_normalize_text(content))
+
+    book_titles = [
+        content.strip()
+        for content in re.findall(r"《([^》]+)》", title)
+        if content.strip()
+    ]
+
+    if len(book_titles) > 1:
+        combined = " + ".join(book_titles)
+        variants.append(combined)
+        variants.append(_normalize_text(combined))
+
     # Extract the title portion before the " - " separator.
     title_part = re.split(
         r"\s+-\s+",

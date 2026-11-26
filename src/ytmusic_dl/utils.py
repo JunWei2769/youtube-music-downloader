@@ -51,6 +51,39 @@ def format_duration(seconds: float | None) -> str:
 
     return f"{minutes}:{seconds:02d}"
 
+def clean_artist_name(
+    artist: str | None,
+) -> str | None:
+    """Remove channel suffixes from an artist name.
+
+    YouTube uploaders are often channels such as "ArtistVEVO",
+    "Artist - Topic", or "ArtistOfficial". They are not the artist
+    name and must not be used for lyrics lookups.
+    """
+
+    if not artist:
+        return artist
+
+    name = artist.strip()
+
+    name = re.sub(
+        r"\s*-\s*topic$",
+        "",
+        name,
+        flags=re.IGNORECASE,
+    )
+
+    name = re.sub(
+        r"\s*(?:vevo|official)$",
+        "",
+        name,
+        flags=re.IGNORECASE,
+    )
+
+    name = re.sub(r"\s+", " ", name).strip()
+
+    return name or artist
+
 def strip_artist_prefix(
     title: str,
     artist: str | None,

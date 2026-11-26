@@ -3,7 +3,7 @@
 from pathlib import Path
 
 from PySide6.QtCore import QSettings, Qt, QUrl
-from PySide6.QtGui import QDesktopServices
+from PySide6.QtGui import QBrush, QColor, QDesktopServices
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -58,7 +58,16 @@ TRACK_COLUMNS = (
     "Artist",
     "Album",
     "Duration",
+    "Lyrics",
 )
+
+LYRICS_COLORS = {
+    "saved": QColor("#2e7d32"),
+    "below_threshold": QColor("#b26a00"),
+    "not_found": QColor("#b00020"),
+    "error": QColor("#b00020"),
+    "off": QColor("#8a8a8a"),
+}
 
 class DownloadTab(QWidget):
     """Load a playlist, review its tracks, then download them."""
@@ -73,6 +82,7 @@ class DownloadTab(QWidget):
         self._worker: DownloadWorker | None = None
         self._load_worker: ExtractWorker | None = None
         self._tracks: list[Track] = []
+        self._track_rows: dict[int, int] = {}
         self._populating = False
 
         self._build_ui()
@@ -185,6 +195,18 @@ class DownloadTab(QWidget):
         selection_row.addWidget(self.select_none_button)
 
         layout.addLayout(selection_row)
+
+        metadata_hint = QLabel(
+            "Double-click Title, Artist, or Album to correct "
+            "metadata before downloading. This also improves "
+            "lyrics matching; the Lyrics column suggests provider "
+            "metadata when a match is rejected."
+        )
+        metadata_hint.setWordWrap(True)
+        metadata_hint.setStyleSheet(
+            "color: palette(mid); font-size: 12px;"
+        )
+        layout.addWidget(metadata_hint)
 
         self.track_table = QTableWidget(
             0,
@@ -370,6 +392,7 @@ class DownloadTab(QWidget):
             return
 
         self._tracks = []
+        self._track_rows = {}
         self._populating = True
         self.track_table.setRowCount(0)
         self._populating = False
@@ -445,12 +468,15 @@ class DownloadTab(QWidget):
         tracks: list[Track],
     ) -> None:
         self._tracks = list(tracks)
+        self._track_rows = {}
         self._populating = True
 
         self.track_table.setRowCount(0)
         self.track_table.setRowCount(len(self._tracks))
 
         for row, track in enumerate(self._tracks):
+            self._track_rows[id(track)] = row
+
             check = QTableWidgetItem()
             check.setFlags(
                 Qt.ItemFlag.ItemIsUserCheckable
@@ -467,14 +493,24 @@ class DownloadTab(QWidget):
                 track.artist or "",
                 track.album or "",
                 format_duration(track.duration),
+                "—",
             )
 
             for column, value in enumerate(values, start=1):
                 item = QTableWidgetItem(value)
-                item.setFlags(
+
+                flags = (
                     Qt.ItemFlag.ItemIsEnabled
                     | Qt.ItemFlag.ItemIsSelectable
                 )
+
+                if column in (2, 3, 4):
+                    flags |= Qt.ItemFlag.ItemIsEditable
+                    item.setToolTip(
+                        "Double-click to correct this metadata."
+                    )
+
+                item.setFlags(flags)
 
                 self.track_table.setItem(
                     row,
@@ -525,10 +561,77 @@ class DownloadTab(QWidget):
         self,
         item: QTableWidgetItem,
     ) -> None:
-        if self._populating or item.column() != 0:
+        if self._populating:
             return
 
-        self._update_selection_label()
+        row = item.row()
+
+        if not 0 <= row < len(self._tracks):
+            return
+
+        track = self._tracks[row]
+
+        if item.column() == 0:
+            self._update_selection_label()
+            return
+
+        text = item.text().strip()
+
+        if item.column() == 2:
+            if text:
+                track.title = text
+            else:
+                item.setText(track.title)
+        elif item.column() == 3:
+            track.artist = text or None
+        elif item.column() == 4:
+            track.album = text or None
+
+    def _on_track_complete(self, track, result) -> None:
+        """Show the per-track lyrics result in the table."""
+
+        row = self._track_rows.get(id(track))
+
+        if row is None:
+            return
+
+        item = self.track_table.item(row, 6)
+
+        if item is None:
+            return
+
+        status = result.lyrics_status
+
+        if status == "saved":
+            text = (
+                f"Saved ({result.lyrics_note})"
+                if result.lyrics_note
+                else "Saved"
+            )
+        elif status == "below_threshold":
+            text = (
+                f"Skipped ({result.lyrics_note})"
+                if result.lyrics_note
+                else "Skipped"
+            )
+        elif status == "not_found":
+            text = "Not found"
+            if result.lyrics_note:
+                text += f" ({result.lyrics_note})"
+        elif status == "error":
+            text = "Error"
+            if result.lyrics_note:
+                text += f" ({result.lyrics_note})"
+        else:
+            text = "Off"
+
+        color = LYRICS_COLORS.get(status)
+
+        item.setText(text)
+        item.setToolTip(text)
+
+        if color is not None:
+            item.setForeground(QBrush(color))
 
     def _update_selection_label(self) -> None:
         count = len(self._selected_tracks())
@@ -613,6 +716,7 @@ class DownloadTab(QWidget):
 
         worker.log.connect(self._on_log)
         worker.progress.connect(self._on_progress)
+        worker.track_complete.connect(self._on_track_complete)
         worker.completed.connect(self._on_completed)
         worker.failed.connect(self._on_failed)
         worker.finished.connect(self._on_finished)

@@ -1,5 +1,6 @@
 from ytmusic_dl.utils import (
     build_lyrics_filename,
+    clean_artist_name,
     sanitize_filename,
     strip_artist_prefix,
 )
@@ -44,6 +45,18 @@ def test_strip_artist_prefix_keeps_clean_titles() -> None:
         "Test Artist - Test Song",
         None,
     ) == "Test Artist - Test Song"
+
+def test_clean_artist_name_removes_channel_suffixes() -> None:
+    """Turn channel names into artist names."""
+
+    assert clean_artist_name("AdeleVEVO") == "Adele"
+    assert clean_artist_name("单依纯Official") == "单依纯"
+    assert clean_artist_name("Rick Astley - Topic") == (
+        "Rick Astley"
+    )
+
+    assert clean_artist_name("Adele") == "Adele"
+    assert clean_artist_name(None) is None
 
 def test_build_lyrics_filename_with_artist() -> None:
     """Prefix standalone lyrics files with the artist."""

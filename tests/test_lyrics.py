@@ -9,6 +9,7 @@ from ytmusic_dl.lyrics import (
     _normalize_text,
     _parse_netease_result,
     _similarity,
+    _title_similarity,
     build_candidate,
     confidence_for_score,
     fetch_missing_lyrics,
@@ -127,6 +128,22 @@ def test_similarity_exact_match() -> None:
         "Test Song",
         "Test Song",
     ) == 1.0
+
+def test_title_similarity_uses_bracketed_chinese_title() -> None:
+    """Use a bracketed song title instead of the upload title."""
+
+    assert _title_similarity(
+        "Jonathan Lee李宗盛 [ 山丘 ] Official Music Video",
+        "山丘",
+    ) >= 0.90
+
+def test_title_similarity_combines_chinese_book_titles() -> None:
+    """Combine 《…》 segments from a medley title."""
+
+    assert _title_similarity(
+        "【单依纯《空耳》+《还你茉莉》】纯妹妹2.0巡回演唱会官摄",
+        "空耳+还你茉莉（Live）",
+    ) >= 0.60
 
 
 def test_duration_is_acceptable() -> None:

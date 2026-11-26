@@ -69,6 +69,7 @@ def test_worker_downloads_reviewed_tracks(
     assert call.kwargs["download_lyrics"] is False
     assert call.kwargs["download_thumbnails"] is False
     assert call.kwargs["cancel_event"] is worker._cancel_event
+    assert callable(call.kwargs["on_track_complete"])
 
 def test_worker_propagates_cancel_event(
     tmp_path: Path,

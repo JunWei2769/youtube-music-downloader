@@ -9,6 +9,7 @@ from yt_dlp.utils import DownloadCancelled
 from ytmusic_dl.audio import AudioStreamInfo
 from ytmusic_dl.browser import BrowserProfile
 from ytmusic_dl.downloader import (
+    _apply_download_metadata,
     audio_file_exists,
     download_track,
     extract_playlist,
@@ -527,3 +528,86 @@ def test_download_track_cancel_raises(
             audio_format="mp3",
             cancel_event=cancel_event,
         )
+
+def test_extract_single_track_cleans_channel_artist() -> None:
+    """Use the artist name instead of a VEVO channel name."""
+
+    info = {
+        "title": "Adele - Hello",
+        "uploader": "AdeleVEVO",
+        "duration": 295,
+        "id": "x",
+    }
+
+    with patch("ytmusic_dl.downloader.YoutubeDL") as mock_ydl:
+        mock_instance = MagicMock()
+        mock_ydl.return_value.__enter__.return_value = (
+            mock_instance
+        )
+        mock_instance.extract_info.return_value = info
+
+        tracks = extract_single_track("https://youtube.com/watch")
+
+    assert tracks[0].artist == "Adele"
+    assert tracks[0].title == "Hello"
+
+def test_extract_single_track_cleans_official_channel() -> None:
+    """Strip the Official suffix from Chinese channel names."""
+
+    info = {
+        "title": "【单依纯《空耳》+《还你茉莉》】演唱会官摄",
+        "uploader": "单依纯Official",
+        "duration": 539,
+        "id": "x",
+    }
+
+    with patch("ytmusic_dl.downloader.YoutubeDL") as mock_ydl:
+        mock_instance = MagicMock()
+        mock_ydl.return_value.__enter__.return_value = (
+            mock_instance
+        )
+        mock_instance.extract_info.return_value = info
+
+        tracks = extract_single_track("https://youtube.com/watch")
+
+    assert tracks[0].artist == "单依纯"
+
+def test_apply_download_metadata_enriches_track() -> None:
+    """Use the watch page's artist, duration, and album."""
+
+    track = Track(
+        playlist_index=1,
+        title="Song",
+        artist="Label Channel",
+        duration=None,
+    )
+
+    _apply_download_metadata(
+        track,
+        {
+            "artist": "Singer",
+            "duration": 200.5,
+            "album": "Album",
+        },
+    )
+
+    assert track.artist == "Singer"
+    assert track.duration == 200.5
+    assert track.album == "Album"
+
+def test_apply_download_metadata_cleans_channel_name() -> None:
+    """Clean a channel name when no artist field is available."""
+
+    track = Track(
+        playlist_index=1,
+        title="Song",
+        artist="单依纯Official",
+        duration=None,
+    )
+
+    _apply_download_metadata(
+        track,
+        {"uploader": "单依纯Official"},
+    )
+
+    assert track.artist == "单依纯"

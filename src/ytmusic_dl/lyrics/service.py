@@ -368,6 +368,17 @@ def pick_best_candidate(
 
     return best
 
+def pick_closest_candidate(
+    candidates: list[LyricsCandidate],
+) -> LyricsCandidate | None:
+    """Return the highest-scoring candidate, accepted or not."""
+
+    return max(
+        candidates,
+        key=lambda candidate: candidate.score,
+        default=None,
+    )
+
 def find_best_candidate(
     request: LyricsRequest,
 ) -> LyricsCandidate | None:

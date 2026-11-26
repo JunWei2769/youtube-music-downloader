@@ -120,6 +120,8 @@ class TrackResult:
     lyrics_written: bool
     thumbnail_embedded: bool
     skipped: bool = False
+    lyrics_status: str = "off"
+    lyrics_note: str | None = None
 
 @dataclass
 class DownloadInfo:

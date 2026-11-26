@@ -31,6 +31,7 @@ from ytmusic_dl.models import DownloadInfo, DownloadProgress, Track
 from ytmusic_dl.utils import (
     LogCallback,
     build_track_filename,
+    clean_artist_name,
     emit_message,
     ensure_directory,
     strip_artist_prefix,
@@ -131,7 +132,7 @@ def extract_playlist(url: str) -> list[Track]:
     tracks = []
 
     for index, entry in enumerate(entries, start=1):
-        artist = (
+        artist = clean_artist_name(
             cast(str | None, entry.get("artist"))
             or cast(str | None, entry.get("uploader"))
         )
@@ -288,6 +289,44 @@ def _resolve_downloaded_path(
     raise FileNotFoundError(
         f"Downloaded audio file was not found for: {filename}"
     )
+
+def _apply_download_metadata(
+    track: Track,
+    info: object,
+) -> None:
+    """Improve track metadata using the downloaded video's info."""
+
+    if not isinstance(info, dict):
+        return
+
+    track.artist = clean_artist_name(track.artist)
+
+    info_artist = info.get("artist") or info.get("creator")
+
+    if info_artist:
+        track.artist = clean_artist_name(str(info_artist))
+    elif not track.artist and info.get("uploader"):
+        track.artist = clean_artist_name(
+            str(info["uploader"])
+        )
+
+    if not track.title or track.title == "Unknown":
+        title = info.get("track") or info.get("title")
+
+        if title:
+            track.title = strip_artist_prefix(
+                str(title),
+                track.artist,
+            )
+
+    if info.get("duration") is not None:
+        try:
+            track.duration = float(info["duration"])
+        except (TypeError, ValueError):
+            pass
+
+    if not track.album and info.get("album"):
+        track.album = str(info["album"])
 
 def _source_stream_info(
     info: object,
@@ -497,6 +536,8 @@ def download_track(
     with YoutubeDL(options) as ydl:  # type: ignore[arg-type]
         info = ydl.extract_info(track_url, download=True)
 
+    _apply_download_metadata(track, info)
+
     audio_path = _resolve_downloaded_path(
         info,
         output_directory,
@@ -540,7 +581,7 @@ def extract_single_track(url: str) -> list[Track]:
     if info is None:
         return []
 
-    artist = (
+    artist = clean_artist_name(
         cast(str | None, info.get("artist"))
         or cast(str | None, info.get("uploader"))
     )

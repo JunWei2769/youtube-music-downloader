@@ -66,6 +66,7 @@ from ytmusic_dl.lyrics.service import (
     find_best_lyrics,
     get_lyrics,
     pick_best_candidate,
+    pick_closest_candidate,
     search_candidates,
     search_lyrics,
     write_lyrics,

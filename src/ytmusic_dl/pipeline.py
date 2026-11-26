@@ -25,6 +25,7 @@ from ytmusic_dl.lyrics import (
     confidence_at_least,
     fetch_missing_lyrics,
     pick_best_candidate,
+    pick_closest_candidate,
     search_candidates,
     write_lyrics,
 )
@@ -51,6 +52,11 @@ TrackProgressCallback = Callable[
 
 PlaylistProgressCallback = Callable[
     [Track, DownloadProgress, int, int],
+    None,
+]
+
+TrackCompleteCallback = Callable[
+    [Track, TrackResult],
     None,
 ]
 
@@ -131,6 +137,8 @@ def process_track(
 
     thumbnail_embedded = False
     lyrics_written = False
+    lyrics_status = "off"
+    lyrics_note = None
 
     # download audio
     download = download_track(
@@ -179,16 +187,60 @@ def process_track(
     # search and write lyrics
     if download_lyrics:
         try:
-            best = pick_best_candidate(
-                search_candidates(track)
-            )
+            candidates = search_candidates(track)
+            best = pick_best_candidate(candidates)
 
             if best is None:
-                emit_message(log, "No suitable lyrics found.")
+                closest = pick_closest_candidate(candidates)
+                lyrics_status = "not_found"
+
+                if (
+                    closest is not None
+                    and closest.rejection_reasons
+                ):
+                    reason = "; ".join(
+                        closest.rejection_reasons
+                    )
+
+                    if "artist does not match" in reason:
+                        provider_artist = (
+                            closest.result.artist_name
+                        )
+
+                        if provider_artist:
+                            reason += (
+                                "; provider artist: "
+                                f"{provider_artist}"
+                            )
+
+                    if "title similarity" in reason:
+                        provider_title = (
+                            closest.result.track_name
+                        )
+
+                        if provider_title:
+                            reason += (
+                                "; provider title: "
+                                f"{provider_title}"
+                            )
+
+                    lyrics_note = f"rejected: {reason}"
+                    emit_message(
+                        log,
+                        f"Lyrics: not found ({reason})",
+                    )
+                else:
+                    emit_message(log, "Lyrics: not found.")
+
             elif not confidence_at_least(
                 best.confidence,
                 lyrics_min_confidence,
             ):
+                lyrics_status = "below_threshold"
+                lyrics_note = (
+                    f"{best.confidence} < "
+                    f"{lyrics_min_confidence}"
+                )
                 emit_message(
                     log,
                     f"Skipped lyrics: {best.confidence} confidence "
@@ -205,8 +257,19 @@ def process_track(
                 )
 
                 lyrics_written = True
+                lyrics_status = "saved"
+                lyrics_note = (
+                    f"{best.confidence} · "
+                    f"{best.result.provider}"
+                )
+                emit_message(
+                    log,
+                    f"Lyrics: saved ({lyrics_note})",
+                )
 
         except Exception as error:
+            lyrics_status = "error"
+            lyrics_note = str(error)
             emit_message(
                 log,
                 f"Warning: Could not get lyrics: {error}",
@@ -216,6 +279,8 @@ def process_track(
         audio_path=audio_path,
         lyrics_written=lyrics_written,
         thumbnail_embedded=thumbnail_embedded,
+        lyrics_status=lyrics_status,
+        lyrics_note=lyrics_note,
     )
 
 def process_playlist(
@@ -230,6 +295,7 @@ def process_playlist(
     log: LogCallback | None = None,
     progress: PlaylistProgressCallback | None = None,
     cancel_event: threading.Event | None = None,
+    on_track_complete: TrackCompleteCallback | None = None,
 ) -> PlaylistResult:
     """Process all tracks in a playlist."""
 
@@ -353,6 +419,9 @@ def process_playlist(
                 thumbnails += 1
 
             successful += 1
+
+            if on_track_complete is not None:
+                on_track_complete(track, result)
 
         except DownloadCancelled:
             cancelled = True

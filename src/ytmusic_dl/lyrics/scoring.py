@@ -13,6 +13,7 @@ from ytmusic_dl.models import (
     LyricsRequest,
     LyricsResult,
 )
+from ytmusic_dl.utils import clean_artist_name
 
 MIN_TITLE_SIMILARITY = 0.60
 MAX_DURATION_DIFFERENCE = 10.0
@@ -64,14 +65,8 @@ def _artist_matches(
         return False
 
     def normalize_artists(value: str) -> set[str]:
-        value = _normalize_text(value)
-
-        # YouTube Topic channels are not part of the artist name.
-        value = re.sub(
-            r"\s*-\s*topic$",
-            "",
-            value,
-            flags=re.IGNORECASE,
+        value = _normalize_text(
+            clean_artist_name(value) or value
         )
 
         parts = re.split(
@@ -139,8 +134,12 @@ def _artist_similarity(
 ) -> float:
     """Return an artist similarity score."""
 
-    first = _normalize_text(track_artist)
-    second = _normalize_text(result_artist)
+    first = _normalize_text(
+        clean_artist_name(track_artist)
+    )
+    second = _normalize_text(
+        clean_artist_name(result_artist)
+    )
 
     if not first or not second:
         return 0.0

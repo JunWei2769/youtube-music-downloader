@@ -523,6 +523,7 @@ def test_process_track_writes_high_confidence_lyrics(
         )
 
     assert result.lyrics_written is True
+    assert result.lyrics_status == "saved"
     mock_write.assert_called_once()
 
 def test_process_track_skips_medium_lyrics_by_default(
@@ -555,6 +556,7 @@ def test_process_track_skips_medium_lyrics_by_default(
         )
 
     assert result.lyrics_written is False
+    assert result.lyrics_status == "below_threshold"
     mock_write.assert_not_called()
 
     assert "Skipped lyrics: medium confidence" in (
@@ -623,9 +625,10 @@ def test_process_track_reports_missing_lyrics(
         )
 
     assert result.lyrics_written is False
+    assert result.lyrics_status == "not_found"
     mock_write.assert_not_called()
 
-    assert "No suitable lyrics found." in (
+    assert "Lyrics: not found." in (
         capsys.readouterr().out
     )
 
@@ -851,3 +854,96 @@ def test_process_playlist_marks_download_cancelled() -> None:
     assert result.successful == 0
     assert result.failed == 0
     assert result.failed_tracks == []
+
+def test_process_track_explains_rejected_lyrics(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    """Report the provider artist when artist matching fails."""
+
+    track = make_track(1)
+    audio_path = tmp_path / "song.mp3"
+
+    candidate = LyricsCandidate(
+        result=LyricsResult(
+            provider="netease",
+            provider_id="1",
+            track_name="山丘",
+            artist_name="李宗盛",
+            album_name=None,
+            duration=406,
+            instrumental=False,
+            synced_lyrics="[00:01.00] Test lyrics",
+            plain_lyrics=None,
+        ),
+        score=0.77,
+        confidence="medium",
+        rejection_reasons=["artist does not match"],
+    )
+
+    with (
+        patch(
+            "ytmusic_dl.pipeline.download_track",
+            return_value=DownloadInfo(path=audio_path),
+        ),
+        patch("ytmusic_dl.pipeline.write_metadata"),
+        patch(
+            "ytmusic_dl.pipeline.search_candidates",
+            return_value=[candidate],
+        ),
+        patch("ytmusic_dl.pipeline.write_lyrics") as mock_write,
+    ):
+        result = process_track(
+            track,
+            tmp_path,
+            download_thumbnails=False,
+        )
+
+    assert result.lyrics_status == "not_found"
+    assert result.lyrics_note is not None
+    assert "artist does not match" in result.lyrics_note
+    assert "provider artist: 李宗盛" in result.lyrics_note
+    mock_write.assert_not_called()
+
+    assert "provider artist: 李宗盛" in (
+        capsys.readouterr().out
+    )
+
+def test_process_playlist_reports_completed_tracks() -> None:
+    """Notify the caller after each processed track."""
+
+    tracks = [make_track(1)]
+
+    track_result = TrackResult(
+        audio_path=Path("song.mp3"),
+        lyrics_written=True,
+        thumbnail_embedded=False,
+        lyrics_status="saved",
+        lyrics_note="high · lrclib",
+    )
+
+    completed = []
+
+    with (
+        patch(
+            "ytmusic_dl.pipeline.find_browser_with_cookies",
+            return_value=TEST_BROWSER,
+        ),
+        patch(
+            "ytmusic_dl.pipeline.audio_file_exists",
+            return_value=False,
+        ),
+        patch(
+            "ytmusic_dl.pipeline.process_track",
+            return_value=track_result,
+        ),
+    ):
+        process_playlist(
+            tracks,
+            Path("downloads/test"),
+            on_track_complete=lambda track, result: (
+                completed.append((track, result))
+            ),
+        )
+
+    assert completed == [(tracks[0], track_result)]

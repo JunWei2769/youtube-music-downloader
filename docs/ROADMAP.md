@@ -44,8 +44,8 @@ The application is organized into focused modules under `src/ytmusic_dl/`:
 
 At the time of this review:
 
-- 209 tests were collected.
-- 209 tests passed.
+- 219 tests were collected.
+- 219 tests passed.
 - GUI tests are skipped when PySide6 is not installed.
 - No tests depend on a local browser profile or usable YouTube cookies.
 - The README test status matches the suite.
@@ -168,6 +168,9 @@ At the time of this review:
 - [x] Show platform-specific install hints when FFmpeg or Deno is missing.
 - [x] Load playlist/track metadata before downloading, with a review table and per-track selection.
 - [x] Persist the active tab and add Open-folder and About actions.
+- [x] Show per-track lyrics results in the download table, including rejection reasons and provider-suggested metadata.
+- [x] Allow correcting Title, Artist, and Album inline before downloading.
+- [x] Clean channel-style artist names and use bracketed Chinese titles for lyrics matching.
 - [ ] Test a real macOS Finder launch from a packaged `.app` (blocked on Phase 5 packaging).
 
 ### Phase 5: Packaging and Releases

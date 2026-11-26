@@ -14,6 +14,7 @@ class DownloadWorker(QThread):
 
     log = Signal(str)
     progress = Signal(object, object, int, int)
+    track_complete = Signal(object, object)
     completed = Signal(object)
     failed = Signal(str)
 
@@ -76,6 +77,7 @@ class DownloadWorker(QThread):
                 log=self.log.emit,
                 progress=self.progress.emit,
                 cancel_event=self._cancel_event,
+                on_track_complete=self.track_complete.emit,
             )
 
         except Exception as error:

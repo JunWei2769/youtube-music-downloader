@@ -13,7 +13,7 @@ from PySide6.QtCore import QSettings, Qt
 from PySide6.QtWidgets import QApplication, QLabel
 
 from ytmusic_dl.downloader import AUDIO_FORMATS
-from ytmusic_dl.gui.download_tab import DownloadTab
+from ytmusic_dl.gui.download_tab import TRACK_COLUMNS, DownloadTab
 from ytmusic_dl.gui.environment import ToolStatus
 from ytmusic_dl.gui.lyrics_tab import COLUMNS, LyricsTab
 from ytmusic_dl.gui.window import SettingsTab
@@ -25,6 +25,7 @@ from ytmusic_dl.models import (
     LyricsResult,
     PlaylistResult,
     Track,
+    TrackResult,
 )
 
 TOOLS = {
@@ -426,7 +427,9 @@ def test_download_tab_reviews_and_selects_tracks(
     tab._on_tracks_loaded(tracks)
 
     assert tab.track_table.rowCount() == 2
+    assert tab.track_table.columnCount() == len(TRACK_COLUMNS)
     assert tab.track_table.item(0, 2).text() == "Test Song 1"
+    assert tab.track_table.item(0, 6).text() == "—"
     assert tab.start_button.isEnabled()
     assert "2 of 2 selected" in tab.selection_label.text()
 
@@ -449,6 +452,44 @@ def test_download_tab_reviews_and_selects_tracks(
 
     assert tab.track_table.rowCount() == 0
     assert not tab.start_button.isEnabled()
+
+    tab.close()
+
+    assert qt_app is not None
+
+def test_download_tab_edits_metadata_and_shows_lyrics_status(
+    qt_app,
+    app_settings,
+) -> None:
+    """Correct metadata in place and show the lyrics result."""
+
+    tab = DownloadTab(settings=app_settings)
+
+    tracks = [make_track(1)]
+    tab._on_tracks_loaded(tracks)
+
+    tab.track_table.item(0, 2).setText("山丘")
+    tab.track_table.item(0, 3).setText("李宗盛")
+    tab.track_table.item(0, 4).setText("山丘")
+
+    assert tracks[0].title == "山丘"
+    assert tracks[0].artist == "李宗盛"
+    assert tracks[0].album == "山丘"
+
+    tab._on_track_complete(
+        tracks[0],
+        TrackResult(
+            audio_path=Path("song.mp3"),
+            lyrics_written=True,
+            thumbnail_embedded=False,
+            lyrics_status="saved",
+            lyrics_note="high · lrclib",
+        ),
+    )
+
+    assert tab.track_table.item(0, 6).text() == (
+        "Saved (high · lrclib)"
+    )
 
     tab.close()
 

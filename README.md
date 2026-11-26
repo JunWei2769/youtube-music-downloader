@@ -487,7 +487,7 @@ ytmusic-dl-gui
 
 The preview has three tabs: **Music Download**, **Lyrics Only**, and **Settings**.
 
-- **Music Download** is functional: load a playlist or track URL, review the retrieved tracks in a table, deselect anything you do not want, then download with your chosen format (including `source` and `m4a`), browser cookies, lyrics and thumbnail options, live per-track progress, cancellation, a download log, and a source/output quality report.
+- **Music Download** is functional: load a playlist or track URL, review the retrieved tracks in a table, correct Title/Artist/Album inline when an uploader channel is not the artist, deselect anything you do not want, then download with your chosen format (including `source` and `m4a`), browser cookies, lyrics and thumbnail options, live per-track progress, cancellation, a download log, and a source/output quality report. The Lyrics column shows whether lyrics were saved, skipped by confidence, or not matched, including the provider's suggested artist/title when a match is rejected.
 - **Lyrics Only** is functional: search by title and artist or by YouTube Music URL, review every candidate with confidence and match reasons, preview synchronized or plain lyrics, and save to an `.lrc` file. Rejected candidates cannot be saved, and medium/low matches ask for confirmation.
 - **Settings** reports the detected FFmpeg, FFprobe, and Deno locations and versions, including installations outside `PATH`. Detected tool directories are added to `PATH` at startup so Finder launches work. Missing tools show their install command (for example, `brew install ffmpeg` on macOS).
 
@@ -627,7 +627,7 @@ uv run pytest -v
 Current test status:
 
 ```text
-209 passed
+219 passed
 ```
 
 The GUI tests are skipped when PySide6 is not installed.
