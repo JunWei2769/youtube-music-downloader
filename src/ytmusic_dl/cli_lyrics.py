@@ -300,6 +300,12 @@ def _print_candidates(
                 f"{'; '.join(candidate.rejection_reasons)}"
             )
 
+        if candidate.warnings:
+            print(
+                f"   Notes:    "
+                f"{'; '.join(candidate.warnings)}"
+            )
+
         print()
 
 def _run_search(

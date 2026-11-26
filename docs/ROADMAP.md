@@ -44,8 +44,8 @@ The application is organized into focused modules under `src/ytmusic_dl/`:
 
 At the time of this review:
 
-- 122 tests were collected.
-- 122 tests passed.
+- 132 tests were collected.
+- 132 tests passed.
 - No tests depend on a local browser profile or usable YouTube cookies.
 - The README test status matches the suite.
 - CI runs the suite on every push to `main` and on pull requests.
@@ -122,10 +122,10 @@ At the time of this review:
     - NetEase can return the same recording under different album names, so cross-candidate deduplication is needed. (Fixed for exact duplicates: same provider, title, artist, and duration collapse, preferring lyrics content and a matching album.)
 - [x] Use aggressive title normalization for search only, not as sole proof of a correct match.
 - [ ] Include album, artist, title, duration, and version compatibility in scoring.
-- [ ] Penalize studio/live/acoustic/remix/cover/remaster mismatches.
+- [x] Penalize studio/live/acoustic/remix/cover/remaster mismatches.
 - [x] Keep multiple NetEase candidates instead of returning the first accepted result.
 - [ ] Deduplicate and compare candidates across providers.
-  - Same-provider duplicates with identical title, artist, and duration now collapse. Cross-edition copies (original versus remaster) and cross-provider copies are still kept.
+  - Same-provider duplicates with identical title, artist, and duration now collapse, and original/remaster copies are treated as one recording. Live, acoustic, and instrumental editions stay separate, and cross-provider copies are kept.
 - [ ] Add confidence thresholds:
   - High confidence: automatic selection is allowed.
   - Medium confidence: require explicit confirmation.

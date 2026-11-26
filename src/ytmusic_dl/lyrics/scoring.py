@@ -5,6 +5,7 @@ from typing import Literal
 
 from ytmusic_dl.lyrics.normalize import (
     _build_title_variants,
+    _extract_editions,
     _normalize_text,
     _similarity,
 )
@@ -18,6 +19,10 @@ MAX_DURATION_DIFFERENCE = 10.0
 
 HIGH_CONFIDENCE_SCORE = 0.90
 MEDIUM_CONFIDENCE_SCORE = 0.75
+
+NEUTRAL_EDITIONS = frozenset({"remaster"})
+MAJOR_EDITION_PENALTY = 0.25
+MAX_EDITION_PENALTY = 0.35
 
 def confidence_for_score(
     score: float,
@@ -215,6 +220,13 @@ def _passes_basic_checks(
     result: LyricsResult,
 ) -> bool:
     """Return whether a result clears the cheap rejection rules."""
+
+    if (
+        "instrumental" in _extract_editions(result.track_name)
+        and "instrumental"
+        not in _extract_editions(request.title)
+    ):
+        return False
 
     return (
         _title_similarity(request.title, result.track_name)

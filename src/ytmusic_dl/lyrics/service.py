@@ -6,9 +6,16 @@ from ytmusic_dl.lyrics.providers import (
     LRCLIBProvider,
     NetEaseProvider,
 )
-from ytmusic_dl.lyrics.normalize import _normalize_text
+from ytmusic_dl.lyrics.normalize import (
+    _extract_editions,
+    _normalize_text,
+    _strip_title_noise,
+)
 from ytmusic_dl.lyrics.scoring import (
+    MAJOR_EDITION_PENALTY,
+    MAX_EDITION_PENALTY,
     MIN_TITLE_SIMILARITY,
+    NEUTRAL_EDITIONS,
     _artist_matches,
     _artist_similarity,
     _duration_score,
@@ -56,6 +63,7 @@ def build_candidate(
 
     match_reasons: list[str] = []
     rejection_reasons: list[str] = []
+    warnings: list[str] = []
 
     if title_score >= 0.90:
         match_reasons.append("title matches")
@@ -100,6 +108,50 @@ def build_candidate(
     elif result.plain_lyrics:
         match_reasons.append("plain lyrics available")
 
+    # ---------------------------------------------------------
+    # Edition compatibility: prefer the requested version and
+    # penalize live, acoustic, remix, instrumental, and similar
+    # editions. Remasters are treated as the same recording.
+    # ---------------------------------------------------------
+
+    query_editions = _extract_editions(request.title)
+    result_editions = _extract_editions(result.track_name)
+
+    if (
+        "instrumental" in result_editions
+        and "instrumental" not in query_editions
+    ):
+        rejection_reasons.append("instrumental arrangement")
+
+    for edition in sorted(query_editions & result_editions):
+        match_reasons.append(f"{edition} edition")
+
+    unexpected_editions = (
+        result_editions
+        - query_editions
+        - NEUTRAL_EDITIONS
+    )
+
+    missing_editions = (
+        query_editions
+        - result_editions
+        - NEUTRAL_EDITIONS
+    )
+
+    for edition in sorted(unexpected_editions):
+        warnings.append(f"result is the {edition} edition")
+
+    for edition in sorted(missing_editions):
+        warnings.append(f"requested {edition} edition not found")
+
+    edition_penalty = min(
+        (
+            len(unexpected_editions)
+            + len(missing_editions)
+        ) * MAJOR_EDITION_PENALTY,
+        MAX_EDITION_PENALTY,
+    )
+
     score = _match_score(
         request,
         result,
@@ -109,12 +161,15 @@ def build_candidate(
     if result.synced_lyrics:
         score += 0.10
 
+    score = max(0.0, score - edition_penalty)
+
     return LyricsCandidate(
         result=result,
         score=score,
         confidence=confidence_for_score(score),
         match_reasons=match_reasons,
         rejection_reasons=rejection_reasons,
+        warnings=warnings,
     )
 
 def fetch_missing_lyrics(
@@ -171,9 +226,11 @@ def _is_duplicate(
     if first.provider != second.provider:
         return False
 
+    # Ignore video/remaster noise so the original and a remaster of
+    # the same recording collapse into one candidate.
     if (
-        _normalize_text(first.track_name)
-        != _normalize_text(second.track_name)
+        _normalize_text(_strip_title_noise(first.track_name))
+        != _normalize_text(_strip_title_noise(second.track_name))
     ):
         return False
 
@@ -214,7 +271,7 @@ def _album_rank(
 def _dedupe_rank(
     request: LyricsRequest,
     candidate: LyricsCandidate,
-) -> tuple[int, int]:
+) -> tuple[int, int, int]:
     """Rank which duplicate is more useful to keep."""
 
     result = candidate.result
@@ -223,8 +280,16 @@ def _dedupe_rank(
         bool(result.synced_lyrics or result.plain_lyrics)
     )
 
+    edition_match = int(
+        bool(
+            _extract_editions(request.title)
+            & _extract_editions(result.track_name)
+        )
+    )
+
     return (
         has_lyrics,
+        edition_match,
         _album_rank(request, result.album_name),
     )
 

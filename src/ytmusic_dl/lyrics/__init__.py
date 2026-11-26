@@ -24,6 +24,7 @@ from ytmusic_dl.lyrics.constants import (
 )
 from ytmusic_dl.lyrics.normalize import (
     _build_title_variants,
+    _extract_editions,
     _normalize_text,
     _similarity,
 )

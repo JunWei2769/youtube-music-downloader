@@ -58,6 +58,7 @@ class LyricsCandidate:
     confidence: Literal["high", "medium", "low"]
     match_reasons: list[str] = field(default_factory=list)
     rejection_reasons: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
 
     @property
     def accepted(self) -> bool:

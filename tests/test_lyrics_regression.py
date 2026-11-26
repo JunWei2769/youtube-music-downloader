@@ -306,3 +306,74 @@ def test_deduplication_prefers_candidate_with_lyrics() -> None:
 
     assert len(candidates) == 1
     assert candidates[0].result.synced_lyrics is not None
+
+def test_original_and_remaster_are_deduplicated() -> None:
+    """A remaster and its original are the same recording."""
+
+    query = LyricsQuery(
+        title="Test Song",
+        artist="Test Artist",
+        duration=200,
+    )
+
+    results = [
+        make_result(
+            provider="netease",
+            title="Test Song",
+            artist="Test Artist",
+            album="Album A",
+            duration=200,
+        ),
+        make_result(
+            provider="netease",
+            title="Test Song (Remastered 2022)",
+            artist="Test Artist",
+            album="Album B",
+            duration=200,
+        ),
+    ]
+
+    with patch(
+        "ytmusic_dl.lyrics.service.search_lyrics",
+        return_value=results,
+    ):
+        candidates = search_candidates(query)
+
+    assert len(candidates) == 1
+
+def test_deduplication_prefers_requested_edition() -> None:
+    """Keep the copy whose edition the query asks for."""
+
+    query = LyricsQuery(
+        title="Test Song (Remastered 2022)",
+        artist="Test Artist",
+        duration=200,
+    )
+
+    results = [
+        make_result(
+            provider="netease",
+            title="Test Song",
+            artist="Test Artist",
+            album="Album A",
+            duration=200,
+        ),
+        make_result(
+            provider="netease",
+            title="Test Song (Remastered 2022)",
+            artist="Test Artist",
+            album="Album B",
+            duration=200,
+        ),
+    ]
+
+    with patch(
+        "ytmusic_dl.lyrics.service.search_lyrics",
+        return_value=results,
+    ):
+        candidates = search_candidates(query)
+
+    assert len(candidates) == 1
+    assert candidates[0].result.track_name == (
+        "Test Song (Remastered 2022)"
+    )

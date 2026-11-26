@@ -198,3 +198,80 @@ def _similarity(first: str, second: str) -> float:
         first_normalized,
         second_normalized,
     ).ratio()
+
+# Edition words are matched inside brackets first, where they are
+# unambiguous. Bare title words such as "Live" or "Piano" are only
+# treated as editions when they form a known phrase or suffix, so
+# songs like "Live Forever" and "Piano Man" stay untouched.
+
+_BRACKET_EDITIONS = {
+    "live": r"\blive\b|现场|演唱会",
+    "remaster": r"remaster|重制|重置|母带",
+    "acoustic": r"acoustic|unplugged|不插电",
+    "instrumental": (
+        r"instrumental|karaoke|pianoforte|"
+        r"\bpiano\b|backing track|伴奏|纯音乐|钢琴"
+    ),
+    "remix": r"remix|rework|bootleg|\bdj\b|dj版|混音",
+    "cover": r"\bcover\b|tribute|翻唱",
+    "demo": r"\bdemo\b|小样",
+    "radio_edit": r"radio edit|single edit",
+    "extended": r"extended",
+    "speed": r"sped up|slowed|nightcore|reverb",
+}
+
+_TITLE_EDITIONS = {
+    "live": (
+        r"\blive (?:at|in|from|version|session)\b|"
+        r"现场版|演唱会版"
+    ),
+    "remaster": r"remaster|重制版|重置版|母带",
+    "acoustic": r"\bacoustic\b|\bunplugged\b|不插电",
+    "instrumental": (
+        r"\binstrumental\b|\bkaraoke\b|\bpianoforte\b|"
+        r"\bpiano version\b|backing track|伴奏|纯音乐"
+    ),
+    "remix": r"\bremix\b|\brework\b|\bbootleg\b|混音",
+    "cover": r"\bcover version\b|\bcover by\b|翻唱版",
+    "demo": r"\bdemo version\b|小样",
+    "radio_edit": r"\bradio edit\b|\bsingle edit\b",
+    "extended": (
+        r"\bextended version\b|\bextended mix\b|"
+        r"\bextended edit\b"
+    ),
+    "speed": r"\bsped up\b|\bslowed\b|\bnightcore\b|\breverb\b",
+}
+
+_SUFFIX_EDITIONS = {
+    "live": r"\s[-–—]\s*live$|\s[-–—]\s*现场版$",
+    "acoustic": r"\s[-–—]\s*acoustic$",
+    "remix": r"\s[-–—]\s*remix$",
+    "instrumental": r"\s[-–—]\s*instrumental$",
+    "demo": r"\s[-–—]\s*demo$",
+    "cover": r"\s[-–—]\s*cover$",
+}
+
+def _extract_editions(title: str) -> frozenset[str]:
+    """Return the edition tags present in a title."""
+
+    text = _normalize_text(title)
+
+    if not text:
+        return frozenset()
+
+    editions: set[str] = set()
+
+    for content in re.findall(BRACKET_PATTERN, text):
+        for edition, pattern in _BRACKET_EDITIONS.items():
+            if re.search(pattern, content):
+                editions.add(edition)
+
+    for edition, pattern in _TITLE_EDITIONS.items():
+        if re.search(pattern, text):
+            editions.add(edition)
+
+    for edition, pattern in _SUFFIX_EDITIONS.items():
+        if re.search(pattern, text):
+            editions.add(edition)
+
+    return frozenset(editions)
