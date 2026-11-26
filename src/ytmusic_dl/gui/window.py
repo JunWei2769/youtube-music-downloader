@@ -8,11 +8,15 @@ Purpose: Main window for the desktop application.
 Responsibility: Desktop user interface
 """
 
+from importlib.metadata import version
+
 from PySide6.QtCore import QSettings, Qt
+from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QFormLayout,
     QLabel,
     QMainWindow,
+    QMessageBox,
     QPushButton,
     QTabWidget,
     QVBoxLayout,
@@ -99,6 +103,8 @@ class MainWindow(QMainWindow):
 
         self.setCentralWidget(self.tabs)
 
+        self._build_menu()
+
         geometry = self._settings.value(
             "window/geometry"
         )
@@ -106,12 +112,55 @@ class MainWindow(QMainWindow):
         if geometry is not None:
             self.restoreGeometry(geometry)
 
+        tab_index = int(
+            self._settings.value("window/tab", 0)
+        )
+
+        if 0 <= tab_index < self.tabs.count():
+            self.tabs.setCurrentIndex(tab_index)
+
+    def _build_menu(self) -> None:
+        """Add a Help menu with an About entry."""
+
+        about_action = QAction(
+            "About YouTube Music Downloader",
+            self,
+        )
+        about_action.setMenuRole(
+            QAction.MenuRole.AboutRole
+        )
+        about_action.triggered.connect(self._show_about)
+
+        help_menu = self.menuBar().addMenu("Help")
+        help_menu.addAction(about_action)
+
+    def _show_about(self) -> None:
+        try:
+            app_version = version(
+                "youtube-music-downloader"
+            )
+        except Exception:
+            app_version = "unknown"
+
+        QMessageBox.about(
+            self,
+            "About YouTube Music Downloader",
+            "Version "
+            f"{app_version}\n\n"
+            "Download music from YouTube Music playlists and "
+            "tracks, with lyrics search and a desktop interface.",
+        )
+
     def closeEvent(self, event) -> None:
         """Save state and let tabs stop background workers."""
 
         self._settings.setValue(
             "window/geometry",
             self.saveGeometry(),
+        )
+        self._settings.setValue(
+            "window/tab",
+            self.tabs.currentIndex(),
         )
 
         for index in range(self.tabs.count()):

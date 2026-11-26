@@ -2,26 +2,32 @@
 
 from pathlib import Path
 
-from PySide6.QtCore import QSettings, Qt
+from PySide6.QtCore import QSettings, Qt, QUrl
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QFileDialog,
     QFormLayout,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QLineEdit,
     QMessageBox,
     QPlainTextEdit,
     QProgressBar,
     QPushButton,
+    QTableWidget,
+    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
 
 from ytmusic_dl.downloader import AUDIO_FORMATS
 from ytmusic_dl.gui.download_worker import DownloadWorker
+from ytmusic_dl.gui.extract_worker import ExtractWorker
 from ytmusic_dl.models import DownloadProgress, Track
+from ytmusic_dl.utils import format_duration
 
 DEFAULT_OUTPUT = Path("downloads")
 
@@ -45,8 +51,17 @@ BROWSERS = (
     "whale",
 )
 
+TRACK_COLUMNS = (
+    "Download",
+    "#",
+    "Title",
+    "Artist",
+    "Album",
+    "Duration",
+)
+
 class DownloadTab(QWidget):
-    """Download a playlist or track with live progress."""
+    """Load a playlist, review its tracks, then download them."""
 
     def __init__(
         self,
@@ -56,6 +71,9 @@ class DownloadTab(QWidget):
 
         self._settings = settings or QSettings()
         self._worker: DownloadWorker | None = None
+        self._load_worker: ExtractWorker | None = None
+        self._tracks: list[Track] = []
+        self._populating = False
 
         self._build_ui()
         self._load_settings()
@@ -69,12 +87,24 @@ class DownloadTab(QWidget):
 
         form = QFormLayout()
 
+        url_row = QHBoxLayout()
+
         self.url_input = QLineEdit()
         self.url_input.setPlaceholderText(
             "https://music.youtube.com/playlist?list=… "
             "or https://music.youtube.com/watch?v=…"
         )
-        form.addRow("Playlist or track URL:", self.url_input)
+        self.url_input.textChanged.connect(
+            self._on_url_changed
+        )
+
+        self.load_button = QPushButton("Load tracks")
+        self.load_button.clicked.connect(self._load_tracks)
+
+        url_row.addWidget(self.url_input, 1)
+        url_row.addWidget(self.load_button)
+
+        form.addRow("Playlist or track URL:", url_row)
 
         output_row = QHBoxLayout()
 
@@ -83,8 +113,12 @@ class DownloadTab(QWidget):
         browse_button = QPushButton("Browse…")
         browse_button.clicked.connect(self._browse)
 
+        open_button = QPushButton("Open")
+        open_button.clicked.connect(self._open_output)
+
         output_row.addWidget(self.output_input, 1)
         output_row.addWidget(browse_button)
+        output_row.addWidget(open_button)
 
         form.addRow("Output directory:", output_row)
 
@@ -128,9 +162,69 @@ class DownloadTab(QWidget):
 
         layout.addLayout(form)
 
+        selection_row = QHBoxLayout()
+
+        self.selection_label = QLabel(
+            "Load a URL to review its tracks."
+        )
+
+        self.select_all_button = QPushButton("Select all")
+        self.select_all_button.setEnabled(False)
+        self.select_all_button.clicked.connect(
+            lambda: self._set_all_checked(True)
+        )
+
+        self.select_none_button = QPushButton("Select none")
+        self.select_none_button.setEnabled(False)
+        self.select_none_button.clicked.connect(
+            lambda: self._set_all_checked(False)
+        )
+
+        selection_row.addWidget(self.selection_label, 1)
+        selection_row.addWidget(self.select_all_button)
+        selection_row.addWidget(self.select_none_button)
+
+        layout.addLayout(selection_row)
+
+        self.track_table = QTableWidget(
+            0,
+            len(TRACK_COLUMNS),
+        )
+        self.track_table.setHorizontalHeaderLabels(
+            TRACK_COLUMNS
+        )
+        self.track_table.setSelectionBehavior(
+            QTableWidget.SelectionBehavior.SelectRows
+        )
+        self.track_table.setSelectionMode(
+            QTableWidget.SelectionMode.SingleSelection
+        )
+        self.track_table.setEditTriggers(
+            QTableWidget.EditTrigger.NoEditTriggers
+        )
+        self.track_table.setAlternatingRowColors(True)
+        self.track_table.setWordWrap(False)
+        self.track_table.verticalHeader().setVisible(False)
+
+        header = self.track_table.horizontalHeader()
+        header.setSectionResizeMode(
+            QHeaderView.ResizeMode.ResizeToContents
+        )
+        header.setSectionResizeMode(
+            2,
+            QHeaderView.ResizeMode.Stretch,
+        )
+
+        self.track_table.itemChanged.connect(
+            self._on_track_item_changed
+        )
+
+        layout.addWidget(self.track_table, 1)
+
         controls = QHBoxLayout()
 
         self.start_button = QPushButton("Start download")
+        self.start_button.setEnabled(False)
         self.start_button.clicked.connect(self._start)
 
         self.cancel_button = QPushButton("Cancel")
@@ -169,6 +263,10 @@ class DownloadTab(QWidget):
         self.lyrics_check.toggled.connect(
             self.confidence_combo.setEnabled
         )
+
+    # ---------------------------------------------------------
+    # Settings
+    # ---------------------------------------------------------
 
     @staticmethod
     def _select_combo_data(combo, value) -> None:
@@ -258,26 +356,27 @@ class DownloadTab(QWidget):
         )
 
     # ---------------------------------------------------------
-    # Controls
+    # Loading tracks
     # ---------------------------------------------------------
 
-    def _browse(self) -> None:
-        start = Path(
-            self.output_input.text().strip()
-            or str(DEFAULT_OUTPUT)
-        ).expanduser()
+    def _on_url_changed(self, _text: str) -> None:
+        self._invalidate_tracks()
 
-        directory = QFileDialog.getExistingDirectory(
-            self,
-            "Select output directory",
-            str(start),
-        )
+    def _invalidate_tracks(self) -> None:
+        if self._load_worker is not None or self._worker is not None:
+            return
 
-        if directory:
-            self.output_input.setText(directory)
+        if not self._tracks:
+            return
 
-    def _start(self) -> None:
-        if self._worker is not None:
+        self._tracks = []
+        self._populating = True
+        self.track_table.setRowCount(0)
+        self._populating = False
+        self._update_selection_label()
+
+    def _load_tracks(self) -> None:
+        if self._load_worker is not None or self._worker is not None:
             return
 
         url = self.url_input.text().strip()
@@ -290,13 +389,215 @@ class DownloadTab(QWidget):
             )
             return
 
+        self._invalidate_tracks()
+        self.summary_label.clear()
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(0)
+        self.progress_label.setText("Loading tracks…")
+        self.log_view.clear()
+        self.log_view.appendPlainText(
+            "Loading track information…"
+        )
+
+        worker = ExtractWorker(url, parent=self)
+
+        worker.completed.connect(self._on_tracks_loaded)
+        worker.failed.connect(self._on_load_failed)
+        worker.finished.connect(self._on_load_finished)
+
+        self._load_worker = worker
+        self._set_busy(True)
+
+        worker.start()
+
+    def _on_tracks_loaded(
+        self,
+        tracks: list[Track],
+    ) -> None:
+        self._populate_tracks(tracks)
+        self.log_view.appendPlainText(
+            f"Found {len(tracks)} track(s)."
+        )
+        self.progress_label.setText("Tracks loaded.")
+
+    def _on_load_failed(self, message: str) -> None:
+        self.progress_label.setText("Loading failed.")
+        self.log_view.appendPlainText(message)
+
+        QMessageBox.critical(
+            self,
+            "Could not load tracks",
+            message,
+        )
+
+    def _on_load_finished(self) -> None:
+        worker = self._load_worker
+        self._load_worker = None
+
+        if worker is not None:
+            worker.deleteLater()
+
+        self._set_busy(False)
+        self._update_selection_label()
+
+    def _populate_tracks(
+        self,
+        tracks: list[Track],
+    ) -> None:
+        self._tracks = list(tracks)
+        self._populating = True
+
+        self.track_table.setRowCount(0)
+        self.track_table.setRowCount(len(self._tracks))
+
+        for row, track in enumerate(self._tracks):
+            check = QTableWidgetItem()
+            check.setFlags(
+                Qt.ItemFlag.ItemIsUserCheckable
+                | Qt.ItemFlag.ItemIsEnabled
+                | Qt.ItemFlag.ItemIsSelectable
+            )
+            check.setCheckState(Qt.CheckState.Checked)
+
+            self.track_table.setItem(row, 0, check)
+
+            values = (
+                str(row + 1),
+                track.title,
+                track.artist or "",
+                track.album or "",
+                format_duration(track.duration),
+            )
+
+            for column, value in enumerate(values, start=1):
+                item = QTableWidgetItem(value)
+                item.setFlags(
+                    Qt.ItemFlag.ItemIsEnabled
+                    | Qt.ItemFlag.ItemIsSelectable
+                )
+
+                self.track_table.setItem(
+                    row,
+                    column,
+                    item,
+                )
+
+        self._populating = False
+        self._update_selection_label()
+
+    def _selected_tracks(self) -> list[Track]:
+        selected: list[Track] = []
+
+        for row, track in enumerate(self._tracks):
+            item = self.track_table.item(row, 0)
+
+            if (
+                item is not None
+                and item.checkState()
+                == Qt.CheckState.Checked
+            ):
+                selected.append(track)
+
+        return selected
+
+    def _set_all_checked(self, checked: bool) -> None:
+        if not self._tracks:
+            return
+
+        state = (
+            Qt.CheckState.Checked
+            if checked
+            else Qt.CheckState.Unchecked
+        )
+
+        self._populating = True
+
+        for row in range(self.track_table.rowCount()):
+            item = self.track_table.item(row, 0)
+
+            if item is not None:
+                item.setCheckState(state)
+
+        self._populating = False
+        self._update_selection_label()
+
+    def _on_track_item_changed(
+        self,
+        item: QTableWidgetItem,
+    ) -> None:
+        if self._populating or item.column() != 0:
+            return
+
+        self._update_selection_label()
+
+    def _update_selection_label(self) -> None:
+        count = len(self._selected_tracks())
+        total = len(self._tracks)
+
+        self.selection_label.setText(
+            f"{count} of {total} selected"
+            if total
+            else "Load a URL to review its tracks."
+        )
+
+        busy = (
+            self._load_worker is not None
+            or self._worker is not None
+        )
+
+        self.start_button.setEnabled(not busy and count > 0)
+
+        has_tracks = total > 0
+        self.select_all_button.setEnabled(
+            not busy and has_tracks
+        )
+        self.select_none_button.setEnabled(
+            not busy and has_tracks
+        )
+
+    def _set_busy(self, busy: bool) -> None:
+        self.load_button.setEnabled(not busy)
+        self.url_input.setEnabled(not busy)
+        self.cancel_button.setEnabled(
+            busy and self._worker is not None
+        )
+
+        self.start_button.setEnabled(
+            not busy and bool(self._selected_tracks())
+        )
+
+        self.select_all_button.setEnabled(
+            not busy and bool(self._tracks)
+        )
+        self.select_none_button.setEnabled(
+            not busy and bool(self._tracks)
+        )
+
+    # ---------------------------------------------------------
+    # Downloading
+    # ---------------------------------------------------------
+
+    def _start(self) -> None:
+        if self._worker is not None:
+            return
+
+        tracks = self._selected_tracks()
+
+        if not tracks:
+            QMessageBox.warning(
+                self,
+                "No tracks selected",
+                "Load a URL and select at least one track.",
+            )
+            return
+
         output_directory = Path(
             self.output_input.text().strip()
             or str(DEFAULT_OUTPUT)
         ).expanduser()
 
         worker = DownloadWorker(
-            url=url,
+            tracks=tracks,
             output_directory=output_directory,
             audio_format=self.format_combo.currentData(),
             browser_name=self.browser_combo.currentData(),
@@ -318,18 +619,17 @@ class DownloadTab(QWidget):
 
         self._worker = worker
 
-        self._set_running(True)
+        self._set_busy(True)
         self.log_view.clear()
         self.summary_label.clear()
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
         self.progress_label.setText("Starting…")
+        self.log_view.appendPlainText(
+            f"Starting download of {len(tracks)} track(s)…"
+        )
 
         worker.start()
-
-    def _set_running(self, running: bool) -> None:
-        self.start_button.setEnabled(not running)
-        self.cancel_button.setEnabled(running)
 
     def _cancel(self) -> None:
         if self._worker is None:
@@ -339,10 +639,6 @@ class DownloadTab(QWidget):
         self.cancel_button.setEnabled(False)
         self.progress_label.setText("Cancelling…")
         self.log_view.appendPlainText("Cancelling…")
-
-    # ---------------------------------------------------------
-    # Worker signals
-    # ---------------------------------------------------------
 
     def _on_log(self, message: str) -> None:
         self.log_view.appendPlainText(message)
@@ -410,27 +706,72 @@ class DownloadTab(QWidget):
         )
 
     def _on_finished(self) -> None:
-        self._set_running(False)
-
-        if self._worker is not None:
-            self._worker.deleteLater()
-
+        worker = self._worker
         self._worker = None
+
+        if worker is not None:
+            worker.deleteLater()
+
+        self._set_busy(False)
+        self._update_selection_label()
+
+    # ---------------------------------------------------------
+    # Files
+    # ---------------------------------------------------------
+
+    def _browse(self) -> None:
+        start = Path(
+            self.output_input.text().strip()
+            or str(DEFAULT_OUTPUT)
+        ).expanduser()
+
+        directory = QFileDialog.getExistingDirectory(
+            self,
+            "Select output directory",
+            str(start),
+        )
+
+        if directory:
+            self.output_input.setText(directory)
+
+    def _open_output(self) -> None:
+        directory = Path(
+            self.output_input.text().strip()
+            or str(DEFAULT_OUTPUT)
+        ).expanduser()
+
+        try:
+            directory.mkdir(parents=True, exist_ok=True)
+        except OSError as error:
+            QMessageBox.warning(
+                self,
+                "Cannot open folder",
+                str(error),
+            )
+            return
+
+        QDesktopServices.openUrl(
+            QUrl.fromLocalFile(str(directory.resolve()))
+        )
 
     # ---------------------------------------------------------
     # Window
     # ---------------------------------------------------------
 
     def shutdown(self) -> None:
-        """Cancel and wait for a running download."""
+        """Cancel and wait for running work."""
 
-        if self._worker is None:
-            return
+        if self._worker is not None:
+            self._worker.cancel()
 
-        self._worker.cancel()
+            if self._worker.isRunning():
+                self._worker.wait(15000)
 
-        if self._worker.isRunning():
-            self._worker.wait(15000)
+        if (
+            self._load_worker is not None
+            and self._load_worker.isRunning()
+        ):
+            self._load_worker.wait(15000)
 
     def closeEvent(self, event) -> None:
         self.shutdown()

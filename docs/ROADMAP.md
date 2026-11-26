@@ -44,8 +44,8 @@ The application is organized into focused modules under `src/ytmusic_dl/`:
 
 At the time of this review:
 
-- 204 tests were collected.
-- 204 tests passed.
+- 209 tests were collected.
+- 209 tests passed.
 - GUI tests are skipped when PySide6 is not installed.
 - No tests depend on a local browser profile or usable YouTube cookies.
 - The README test status matches the suite.
@@ -166,6 +166,8 @@ At the time of this review:
 - [x] Test a macOS Finder-like launch from a minimal environment (PATH-independent tool detection and window startup).
 - [x] Persist window geometry and download/lyrics defaults with `QSettings`.
 - [x] Show platform-specific install hints when FFmpeg or Deno is missing.
+- [x] Load playlist/track metadata before downloading, with a review table and per-track selection.
+- [x] Persist the active tab and add Open-folder and About actions.
 - [ ] Test a real macOS Finder launch from a packaged `.app` (blocked on Phase 5 packaging).
 
 ### Phase 5: Packaging and Releases

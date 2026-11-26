@@ -9,7 +9,7 @@ pytest.importorskip("PySide6")
 
 from pathlib import Path
 
-from PySide6.QtCore import QSettings
+from PySide6.QtCore import QSettings, Qt
 from PySide6.QtWidgets import QApplication, QLabel
 
 from ytmusic_dl.downloader import AUDIO_FORMATS
@@ -386,5 +386,77 @@ def test_settings_tab_shows_install_hint(qt_app) -> None:
     )
 
     tab.close()
+
+    assert qt_app is not None
+
+def make_track(index: int = 1) -> Track:
+    """Create a track for the preview table."""
+
+    return Track(
+        playlist_index=index,
+        title=f"Test Song {index}",
+        artist="Test Artist",
+        album="Test Album",
+        duration=200,
+        video_id=f"video{index}",
+        webpage_url=f"https://youtube.com/watch?v=video{index}",
+        playlist_name="Test Playlist",
+    )
+
+def test_download_tab_reviews_and_selects_tracks(
+    qt_app,
+    app_settings,
+) -> None:
+    """Show loaded tracks and allow deselecting them."""
+
+    tab = DownloadTab(settings=app_settings)
+
+    tracks = [make_track(1), make_track(2)]
+    tab._on_tracks_loaded(tracks)
+
+    assert tab.track_table.rowCount() == 2
+    assert tab.track_table.item(0, 2).text() == "Test Song 1"
+    assert tab.start_button.isEnabled()
+    assert "2 of 2 selected" in tab.selection_label.text()
+
+    tab.track_table.item(0, 0).setCheckState(
+        Qt.CheckState.Unchecked
+    )
+
+    assert "1 of 2 selected" in tab.selection_label.text()
+    assert tab._selected_tracks() == [tracks[1]]
+
+    tab._set_all_checked(False)
+    assert not tab.start_button.isEnabled()
+
+    tab._set_all_checked(True)
+    assert tab.start_button.isEnabled()
+
+    tab.url_input.setText(
+        "https://music.youtube.com/watch?v=other"
+    )
+
+    assert tab.track_table.rowCount() == 0
+    assert not tab.start_button.isEnabled()
+
+    tab.close()
+
+    assert qt_app is not None
+
+def test_main_window_persists_selected_tab(
+    qt_app,
+    app_settings,
+) -> None:
+    """Remember the active tab between launches."""
+
+    window = MainWindow(settings=app_settings)
+    window.tabs.setCurrentIndex(1)
+    window.close()
+
+    restored = MainWindow(settings=app_settings)
+
+    assert restored.tabs.currentIndex() == 1
+
+    restored.close()
 
     assert qt_app is not None

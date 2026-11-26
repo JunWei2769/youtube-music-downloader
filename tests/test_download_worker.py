@@ -9,6 +9,7 @@ import pytest
 pytest.importorskip("PySide6")
 
 from ytmusic_dl.gui.download_worker import DownloadWorker
+from ytmusic_dl.gui.extract_worker import ExtractWorker
 from ytmusic_dl.models import PlaylistResult, Track
 
 def make_track() -> Track:
@@ -22,92 +23,129 @@ def make_track() -> Track:
         playlist_name="Test Playlist",
     )
 
-def test_worker_runs_pipeline(tmp_path: Path) -> None:
-    """Extract tracks and run the download pipeline."""
-
-    track = make_track()
-
-    result = PlaylistResult(
+def make_result(output_directory: Path) -> PlaylistResult:
+    return PlaylistResult(
         total=1,
         successful=1,
         failed=0,
         lyrics=0,
         thumbnails=0,
-        output_directory=tmp_path,
+        output_directory=output_directory,
         failed_tracks=[],
         skipped=0,
     )
 
+def test_worker_downloads_reviewed_tracks(
+    tmp_path: Path,
+) -> None:
+    """Run the pipeline for the tracks passed in."""
+
+    track = make_track()
+    result = make_result(tmp_path)
+
     worker = DownloadWorker(
-        url="https://music.youtube.com/playlist?list=test",
+        tracks=[track],
         output_directory=tmp_path,
         audio_format="m4a",
         download_lyrics=False,
         download_thumbnails=False,
     )
 
-    logs: list[str] = []
     completed: list[PlaylistResult] = []
-
-    worker.log.connect(logs.append)
     worker.completed.connect(completed.append)
 
-    with (
-        patch(
-            "ytmusic_dl.gui.download_worker.extract_playlist",
-            return_value=[track],
-        ) as mock_extract,
-        patch(
-            "ytmusic_dl.gui.download_worker.process_playlist",
-            return_value=result,
-        ) as mock_process,
-    ):
+    with patch(
+        "ytmusic_dl.gui.download_worker.process_playlist",
+        return_value=result,
+    ) as mock_process:
         worker.run()
 
     assert completed == [result]
-    mock_extract.assert_called_once_with(worker._url)
 
-    kwargs = mock_process.call_args.kwargs
+    call = mock_process.call_args
 
-    assert kwargs["audio_format"] == "m4a"
-    assert kwargs["download_lyrics"] is False
-    assert kwargs["download_thumbnails"] is False
-    assert kwargs["cancel_event"] is worker._cancel_event
+    assert call.args[0] == [track]
+    assert call.kwargs["audio_format"] == "m4a"
+    assert call.kwargs["download_lyrics"] is False
+    assert call.kwargs["download_thumbnails"] is False
+    assert call.kwargs["cancel_event"] is worker._cancel_event
 
-    assert logs[0].startswith("Extracting")
-
-def test_worker_stops_when_cancelled(tmp_path: Path) -> None:
-    """Do not run the pipeline after a cancellation request."""
+def test_worker_propagates_cancel_event(
+    tmp_path: Path,
+) -> None:
+    """Pass the cancellation event to the pipeline."""
 
     worker = DownloadWorker(
-        url="https://music.youtube.com/watch?v=test123",
+        tracks=[make_track()],
         output_directory=tmp_path,
         audio_format="mp3",
     )
 
     worker.cancel()
 
-    logs: list[str] = []
-    completed: list[PlaylistResult] = []
+    with patch(
+        "ytmusic_dl.gui.download_worker.process_playlist",
+        return_value=make_result(tmp_path),
+    ) as mock_process:
+        worker.run()
 
-    worker.log.connect(logs.append)
+    assert mock_process.call_args.kwargs[
+        "cancel_event"
+    ].is_set()
+
+def test_extract_worker_loads_playlist() -> None:
+    """Load playlist entries."""
+
+    track = make_track()
+    worker = ExtractWorker(
+        "https://music.youtube.com/playlist?list=test"
+    )
+
+    completed: list[list[Track]] = []
     worker.completed.connect(completed.append)
 
-    with (
-        patch(
-            "ytmusic_dl.gui.download_worker.extract_single_track",
-            return_value=[make_track()],
-        ),
-        patch(
-            "ytmusic_dl.gui.download_worker.process_playlist",
-        ) as mock_process,
+    with patch(
+        "ytmusic_dl.gui.extract_worker.extract_playlist",
+        return_value=[track],
+    ) as mock_extract:
+        worker.run()
+
+    assert completed == [[track]]
+    mock_extract.assert_called_once_with(worker._url)
+
+def test_extract_worker_loads_single_track() -> None:
+    """Load a single track when the URL is not a playlist."""
+
+    track = make_track()
+    worker = ExtractWorker(
+        "https://music.youtube.com/watch?v=test123"
+    )
+
+    completed: list[list[Track]] = []
+    worker.completed.connect(completed.append)
+
+    with patch(
+        "ytmusic_dl.gui.extract_worker.extract_single_track",
+        return_value=[track],
     ):
         worker.run()
 
-    mock_process.assert_not_called()
+    assert completed == [[track]]
 
-    assert any("cancelled" in line.lower() for line in logs)
+def test_extract_worker_reports_empty_results() -> None:
+    """Report a URL that produced no tracks."""
 
-    assert len(completed) == 1
-    assert completed[0].cancelled
-    assert completed[0].output_directory == tmp_path
+    worker = ExtractWorker(
+        "https://music.youtube.com/playlist?list=empty"
+    )
+
+    failed: list[str] = []
+    worker.failed.connect(failed.append)
+
+    with patch(
+        "ytmusic_dl.gui.extract_worker.extract_playlist",
+        return_value=[],
+    ):
+        worker.run()
+
+    assert failed == ["No tracks found for that URL."]
