@@ -535,3 +535,176 @@ def test_lyrics_download_best_ignores_display_limit(
     assert output_path.read_text(encoding="utf-8") == (
         "[00:01.00] Accepted lyrics"
     )
+
+class _TtyStdin:
+    """A stdin stand-in that reports itself as interactive."""
+
+    def isatty(self) -> bool:
+        return True
+
+def test_lyrics_download_medium_best_needs_confirmation(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    """Refuse to auto-save a medium-confidence match."""
+
+    candidate = make_candidate(
+        score=0.85,
+        confidence="medium",
+    )
+
+    with patch(
+        "ytmusic_dl.cli_lyrics.search_candidates",
+        return_value=[candidate],
+    ):
+        exit_code = run_lyrics_command(
+            [
+                "download",
+                "Test Song",
+                "--artist",
+                "Test Artist",
+                "--best",
+                "--output",
+                str(tmp_path),
+            ]
+        )
+
+    assert exit_code == 1
+    assert not (tmp_path / "Test Artist - Test Song.lrc").exists()
+    assert "require confirmation" in capsys.readouterr().out
+
+def test_lyrics_download_medium_best_with_yes(
+    tmp_path: Path,
+) -> None:
+    """Save a medium-confidence match when --yes is given."""
+
+    candidate = make_candidate(
+        score=0.85,
+        confidence="medium",
+    )
+
+    with patch(
+        "ytmusic_dl.cli_lyrics.search_candidates",
+        return_value=[candidate],
+    ):
+        exit_code = run_lyrics_command(
+            [
+                "download",
+                "Test Song",
+                "--artist",
+                "Test Artist",
+                "--best",
+                "--yes",
+                "--output",
+                str(tmp_path),
+            ]
+        )
+
+    assert exit_code == 0
+    assert (tmp_path / "Test Artist - Test Song.lrc").exists()
+
+def test_lyrics_download_medium_best_confirmed_interactively(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    """Ask before saving a medium-confidence match."""
+
+    candidate = make_candidate(
+        score=0.85,
+        confidence="medium",
+    )
+
+    with (
+        patch(
+            "ytmusic_dl.cli_lyrics.search_candidates",
+            return_value=[candidate],
+        ),
+        patch(
+            "ytmusic_dl.cli_lyrics.sys.stdin",
+            _TtyStdin(),
+        ),
+        patch("builtins.input", return_value="y") as mock_input,
+    ):
+        exit_code = run_lyrics_command(
+            [
+                "download",
+                "Test Song",
+                "--artist",
+                "Test Artist",
+                "--best",
+                "--output",
+                str(tmp_path),
+            ]
+        )
+
+    assert exit_code == 0
+    assert (tmp_path / "Test Artist - Test Song.lrc").exists()
+    mock_input.assert_called_once()
+
+def test_lyrics_download_medium_best_declined(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    """Do not save when the prompt is declined."""
+
+    candidate = make_candidate(
+        score=0.85,
+        confidence="medium",
+    )
+
+    with (
+        patch(
+            "ytmusic_dl.cli_lyrics.search_candidates",
+            return_value=[candidate],
+        ),
+        patch(
+            "ytmusic_dl.cli_lyrics.sys.stdin",
+            _TtyStdin(),
+        ),
+        patch("builtins.input", return_value="n"),
+    ):
+        exit_code = run_lyrics_command(
+            [
+                "download",
+                "Test Song",
+                "--artist",
+                "Test Artist",
+                "--best",
+                "--output",
+                str(tmp_path),
+            ]
+        )
+
+    assert exit_code == 1
+    assert not (tmp_path / "Test Artist - Test Song.lrc").exists()
+    assert "Not saved." in capsys.readouterr().out
+
+def test_lyrics_download_select_low_confidence(
+    tmp_path: Path,
+) -> None:
+    """Allow a low-confidence match only through manual selection."""
+
+    candidate = make_candidate(
+        score=0.60,
+        confidence="low",
+    )
+
+    with patch(
+        "ytmusic_dl.cli_lyrics.search_candidates",
+        return_value=[candidate],
+    ):
+        exit_code = run_lyrics_command(
+            [
+                "download",
+                "Test Song",
+                "--artist",
+                "Test Artist",
+                "--select",
+                "1",
+                "--output",
+                str(tmp_path),
+            ]
+        )
+
+    assert exit_code == 0
+    assert (tmp_path / "Test Artist - Test Song.lrc").exists()

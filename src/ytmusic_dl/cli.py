@@ -56,6 +56,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     parser.add_argument(
+        "--lyrics-confidence",
+        choices=("medium", "high"),
+        default="high",
+        help=(
+            "Minimum lyrics match confidence to save "
+            "(default: high)"
+        ),
+    )
+
+    parser.add_argument(
         "--no-thumbnail",
         action="store_true",
         help="Skip thumbnail download and embedding",
@@ -200,6 +210,7 @@ def main() -> None:
         download_lyrics=not args.no_lyrics,
         download_thumbnails=not args.no_thumbnail,
         audio_format=args.audio_format,
+        lyrics_min_confidence=args.lyrics_confidence,
     )
 
     print()

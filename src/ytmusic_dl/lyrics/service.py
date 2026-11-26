@@ -326,28 +326,45 @@ def find_best_lyrics(
     results: list[LyricsResult],
 ) -> LyricsResult | None:
     """Find the best lyrics result for a track."""
-    if not results:
-        return None
 
-    best_result = None
-    best_score = 0.0
+    candidates = [
+        build_candidate(request, result)
+        for result in results
+    ]
 
-    for result in results:
-        candidate = build_candidate(request, result)
+    best = pick_best_candidate(candidates)
 
-        if not candidate.accepted:
-            continue
-
-        if candidate.score > best_score:
-            best_score = candidate.score
-            best_result = result
-
-    if best_result is None:
+    if best is None:
         return None
 
     # Providers may return metadata-only candidates; fetch the
     # winning candidate's lyrics before handing it to the writer.
-    return fetch_missing_lyrics(best_result)
+    return fetch_missing_lyrics(best.result)
+
+def pick_best_candidate(
+    candidates: list[LyricsCandidate],
+) -> LyricsCandidate | None:
+    """Return the highest-scoring accepted candidate."""
+
+    best: LyricsCandidate | None = None
+
+    for candidate in candidates:
+        if not candidate.accepted:
+            continue
+
+        if best is None or candidate.score > best.score:
+            best = candidate
+
+    return best
+
+def find_best_candidate(
+    request: LyricsRequest,
+) -> LyricsCandidate | None:
+    """Search providers and return the best accepted candidate."""
+
+    return pick_best_candidate(
+        search_candidates(request)
+    )
 
 def get_lyrics(
     request: LyricsRequest,

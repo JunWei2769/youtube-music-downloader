@@ -37,10 +37,14 @@ from ytmusic_dl.lyrics.providers import (
     _parse_netease_result,
 )
 from ytmusic_dl.lyrics.scoring import (
+    CONFIDENCE_ORDER,
     HIGH_CONFIDENCE_SCORE,
+    MAJOR_EDITION_PENALTY,
     MAX_DURATION_DIFFERENCE,
+    MAX_EDITION_PENALTY,
     MEDIUM_CONFIDENCE_SCORE,
     MIN_TITLE_SIMILARITY,
+    NEUTRAL_EDITIONS,
     _artist_matches,
     _artist_similarity,
     _duration_is_acceptable,
@@ -48,14 +52,17 @@ from ytmusic_dl.lyrics.scoring import (
     _match_score,
     _passes_basic_checks,
     _title_similarity,
+    confidence_at_least,
     confidence_for_score,
 )
 from ytmusic_dl.lyrics.service import (
     PROVIDERS,
     build_candidate,
     fetch_missing_lyrics,
+    find_best_candidate,
     find_best_lyrics,
     get_lyrics,
+    pick_best_candidate,
     search_candidates,
     search_lyrics,
     write_lyrics,

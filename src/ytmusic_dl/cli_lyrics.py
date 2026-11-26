@@ -9,10 +9,12 @@ Responsibility: Lyrics-only user interaction
 """
 
 import argparse
+import sys
 from pathlib import Path
 
 from ytmusic_dl.downloader import extract_single_track
 from ytmusic_dl.lyrics import (
+    confidence_at_least,
     fetch_missing_lyrics,
     search_candidates,
     write_lyrics,
@@ -23,12 +25,6 @@ from ytmusic_dl.models import (
     LyricsQuery,
 )
 from ytmusic_dl.utils import build_lyrics_filename, format_duration
-
-CONFIDENCE_ORDER = {
-    "low": 0,
-    "medium": 1,
-    "high": 2,
-}
 
 DEFAULT_LYRICS_OUTPUT = Path("downloads/lyrics")
 
@@ -140,11 +136,17 @@ def build_lyrics_parser() -> argparse.ArgumentParser:
 
     download_parser.add_argument(
         "--min-confidence",
-        choices=("low", "medium", "high"),
+        choices=("medium", "high"),
         default="medium",
         help=(
             "Minimum confidence required by --best (default: medium)"
         ),
+    )
+
+    download_parser.add_argument(
+        "--yes",
+        action="store_true",
+        help="Confirm a medium-confidence match without prompting",
     )
 
     download_parser.add_argument(
@@ -338,10 +340,46 @@ def _is_confident_enough(
 ) -> bool:
     """Return whether a candidate meets the confidence floor."""
 
-    return (
-        CONFIDENCE_ORDER[candidate.confidence]
-        >= CONFIDENCE_ORDER[minimum]
+    return confidence_at_least(
+        candidate.confidence,
+        minimum,
     )
+
+def _confirm_candidate(
+    args: argparse.Namespace,
+    candidate: LyricsCandidate,
+) -> bool:
+    """Apply the automatic/confirm/manual confidence policy."""
+
+    if candidate.confidence == "high":
+        return True
+
+    if candidate.confidence == "low":
+        print(
+            "Error: low-confidence matches require manual selection. "
+            "Use --select N."
+        )
+        return False
+
+    if args.yes:
+        return True
+
+    if not sys.stdin.isatty():
+        print(
+            "Error: medium-confidence matches require confirmation. "
+            "Re-run with --yes or use --select N."
+        )
+        return False
+
+    answer = input(
+        f"Save this {candidate.confidence}-confidence match? [y/N] "
+    )
+
+    if answer.strip().lower() in {"y", "yes"}:
+        return True
+
+    print("Not saved.")
+    return False
 
 def _select_candidate(
     args: argparse.Namespace,
@@ -428,6 +466,14 @@ def _run_download(
     candidate = _select_candidate(args, selection_pool)
 
     if candidate is None:
+        return 1
+
+    # --select is an explicit manual choice; --best still needs the
+    # confidence policy applied.
+    if (
+        args.select is None
+        and not _confirm_candidate(args, candidate)
+    ):
         return 1
 
     filename = build_lyrics_filename(

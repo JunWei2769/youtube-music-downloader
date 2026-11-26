@@ -44,8 +44,8 @@ The application is organized into focused modules under `src/ytmusic_dl/`:
 
 At the time of this review:
 
-- 132 tests were collected.
-- 132 tests passed.
+- 141 tests were collected.
+- 141 tests passed.
 - No tests depend on a local browser profile or usable YouTube cookies.
 - The README test status matches the suite.
 - CI runs the suite on every push to `main` and on pull requests.
@@ -53,11 +53,8 @@ At the time of this review:
 ## Known Issues and Risks
 
 1. **Lyrics false positives**
-   - Aggressive title variants can make live, studio, cover, remix, and remaster versions appear equivalent.
-   - Album metadata is not included in final lyrics scoring.
-   - Missing durations are treated as acceptable.
-   - NetEase returns the first accepted candidate instead of retaining alternatives.
-   - Low-confidence matches are saved without requiring user confirmation.
+   - Album metadata is not included in final scoring.
+   - Missing durations are treated as acceptable, which caps those matches at `medium` confidence.
 
 2. **Audio quality limitations**
    - FLAC/WAV output does not improve the quality of a lossy YouTube source.
@@ -126,10 +123,10 @@ At the time of this review:
 - [x] Keep multiple NetEase candidates instead of returning the first accepted result.
 - [ ] Deduplicate and compare candidates across providers.
   - Same-provider duplicates with identical title, artist, and duration now collapse, and original/remaster copies are treated as one recording. Live, acoustic, and instrumental editions stay separate, and cross-provider copies are kept.
-- [ ] Add confidence thresholds:
-  - High confidence: automatic selection is allowed.
-  - Medium confidence: require explicit confirmation.
-  - Low confidence: require manual candidate selection.
+- [x] Add confidence thresholds:
+  - [x] High confidence: automatic selection is allowed.
+  - [x] Medium confidence: require explicit confirmation.
+  - [x] Low confidence: require manual candidate selection.
 - [ ] Expose match explanations in CLI output and the future GUI.
 - [ ] Evaluate optional Chromaprint/AcoustID + MusicBrainz recording identification for downloaded audio.
 

@@ -20,9 +20,26 @@ MAX_DURATION_DIFFERENCE = 10.0
 HIGH_CONFIDENCE_SCORE = 0.90
 MEDIUM_CONFIDENCE_SCORE = 0.75
 
+CONFIDENCE_ORDER = {
+    "low": 0,
+    "medium": 1,
+    "high": 2,
+}
+
 NEUTRAL_EDITIONS = frozenset({"remaster"})
 MAJOR_EDITION_PENALTY = 0.25
 MAX_EDITION_PENALTY = 0.35
+
+def confidence_at_least(
+    confidence: str,
+    minimum: str,
+) -> bool:
+    """Return whether a confidence label meets a minimum."""
+
+    return (
+        CONFIDENCE_ORDER[confidence]
+        >= CONFIDENCE_ORDER[minimum]
+    )
 
 def confidence_for_score(
     score: float,

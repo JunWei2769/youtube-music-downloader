@@ -284,6 +284,8 @@ downloads/
 
 If no suitable lyrics are found, the audio download continues without creating an `.lrc` file.
 
+During playlist and single-track downloads, lyrics are saved only when the match reaches `--lyrics-confidence` (default `high`). Pass `--lyrics-confidence medium` to accept medium-confidence matches as well.
+
 You can disable lyrics completely with:
 
 ```bash
@@ -318,7 +320,9 @@ Use a YouTube Music track URL instead of a title and artist:
 ytmusic-dl lyrics download "https://music.youtube.com/watch?v=VIDEO_ID" --best
 ```
 
-Each candidate shows its provider, score, confidence (`high`, `medium`, `low`), match reasons, and rejection reasons. Every discovered candidate is scored; the best 10 are shown by default. `--best` only saves a candidate at or above `--min-confidence` (default `medium`); use `--select N` to choose a candidate manually.
+Each candidate shows its provider, score, confidence (`high`, `medium`, `low`), match reasons, rejection reasons, and edition notes. Every discovered candidate is scored; the best 10 are shown by default.
+
+`--best` saves a high-confidence match automatically. A medium-confidence match asks for confirmation first, or needs `--yes` when running without a terminal. Low-confidence matches can only be saved by choosing them explicitly with `--select N`. `--min-confidence high` restricts `--best` to high-confidence matches only.
 
 Provider diagnostics are hidden by default. Pass `--verbose` to see NetEase search and lyrics requests.
 
@@ -332,7 +336,8 @@ Files are written to `downloads/lyrics/` by default as `<Artist> - <Title>.lrc`.
 | `--limit N`              | Maximum candidates to show, best first (default: 10, 0 shows all) |
 | `--best`                 | Save the highest-scoring accepted candidate          |
 | `--select N`             | Save candidate N from the search list                |
-| `--min-confidence LEVEL` | Minimum confidence for `--best`: `high`, `medium`, `low` |
+| `--min-confidence LEVEL` | Minimum confidence for `--best`: `high` or `medium` (default: `medium`) |
+| `--yes`                  | Confirm a medium-confidence match without prompting  |
 | `-o, --output DIR`       | Output directory. Default: `downloads/lyrics`        |
 | `-v, --verbose`          | Show provider diagnostics                            |
 | `--overwrite`            | Replace an existing lyrics file                      |
@@ -411,6 +416,7 @@ This command is useful for troubleshooting browser profile and cookie detection 
 | `--browser BROWSER`     | Browser to use for YouTube cookies                                  |
 | `--list-browsers`       | List detected browsers and YouTube cookie availability              |
 | `--no-lyrics`           | Disable lyrics downloading                                          |
+| `--lyrics-confidence LEVEL` | Minimum lyrics confidence to save: `high` (default) or `medium` |
 | `--no-thumbnail`        | Disable thumbnail embedding                                         |
 | `-h, --help`            | Show help                                                           |
 
@@ -530,7 +536,7 @@ uv run pytest -v
 Current test status:
 
 ```text
-132 passed
+141 passed
 ```
 
 The test suite covers:

@@ -17,8 +17,10 @@ from ytmusic_dl.browser import (
 )
 from ytmusic_dl.downloader import audio_file_exists, download_track
 from ytmusic_dl.lyrics import (
-    find_best_lyrics,
-    search_lyrics,
+    confidence_at_least,
+    fetch_missing_lyrics,
+    pick_best_candidate,
+    search_candidates,
     write_lyrics,
 )
 from ytmusic_dl.metadata import write_metadata
@@ -35,6 +37,7 @@ def process_track(
     download_lyrics: bool = True,
     download_thumbnails: bool = True,
     audio_format: str = "mp3",
+    lyrics_min_confidence: str = "high",
 ) -> TrackResult:
     """Download and process a single track."""
 
@@ -72,21 +75,28 @@ def process_track(
     # search and write lyrics
     if download_lyrics:
         try:
-            lyrics_results = search_lyrics(track)
-
-            best_lyrics = find_best_lyrics(
-                track,
-                lyrics_results,
+            best = pick_best_candidate(
+                search_candidates(track)
             )
 
-            if best_lyrics is not None:
+            if best is None:
+                print("No suitable lyrics found.")
+            elif not confidence_at_least(
+                best.confidence,
+                lyrics_min_confidence,
+            ):
+                print(
+                    f"Skipped lyrics: {best.confidence} confidence "
+                    f"(minimum: {lyrics_min_confidence})"
+                )
+            else:
                 lyrics_path = output_directory / (
                     f"{audio_path.stem}.lrc"
                 )
 
                 write_lyrics(
-                    best_lyrics,
-                    lyrics_path
+                    fetch_missing_lyrics(best.result),
+                    lyrics_path,
                 )
 
                 lyrics_written = True
@@ -108,6 +118,7 @@ def process_playlist(
     download_lyrics: bool = True,
     download_thumbnails: bool = True,
     audio_format: str = "mp3",
+    lyrics_min_confidence: str = "high",
 ) -> PlaylistResult:
     """Process all tracks in a playlist."""
 
@@ -186,6 +197,7 @@ def process_playlist(
                 download_lyrics=download_lyrics,
                 download_thumbnails=download_thumbnails,
                 audio_format=audio_format,
+                lyrics_min_confidence=lyrics_min_confidence,
             )
 
             if result.lyrics_written:

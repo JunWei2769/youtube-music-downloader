@@ -2,8 +2,13 @@ from pathlib import Path
 from unittest.mock import patch
 
 from ytmusic_dl.browser import BrowserProfile
-from ytmusic_dl.models import Track, TrackResult
-from ytmusic_dl.pipeline import process_playlist
+from ytmusic_dl.models import (
+    LyricsCandidate,
+    LyricsResult,
+    Track,
+    TrackResult,
+)
+from ytmusic_dl.pipeline import process_playlist, process_track
 
 TEST_BROWSER = BrowserProfile(
     name="vivaldi",
@@ -21,6 +26,27 @@ def make_track(index: int) -> Track:
         video_id=f"video{index}",
         webpage_url=f"https://youtube.com/watch?v=video{index}",
         playlist_name="Test Playlist",
+    )
+
+def make_lyrics_candidate(
+    confidence: str,
+) -> LyricsCandidate:
+    """Create a scored lyrics candidate."""
+
+    return LyricsCandidate(
+        result=LyricsResult(
+            provider="test",
+            provider_id="1",
+            track_name="Test Song 1",
+            artist_name="Test Artist",
+            album_name="Test Album",
+            duration=200,
+            instrumental=False,
+            synced_lyrics="[00:01.00] Test lyrics",
+            plain_lyrics=None,
+        ),
+        score=1.0,
+        confidence=confidence,
     )
 
 def test_process_playlist() -> None:
@@ -91,6 +117,7 @@ def test_process_playlist() -> None:
             download_lyrics=True,
             download_thumbnails=True,
             audio_format="mp3",
+            lyrics_min_confidence="high",
             browser=TEST_BROWSER,
         )
 
@@ -211,6 +238,7 @@ def test_process_playlist_without_lyrics_and_thumbnails() -> None:
             download_lyrics=False,
             download_thumbnails=False,
             audio_format="mp3",
+            lyrics_min_confidence="high",
             browser=TEST_BROWSER,
         )
 
@@ -269,6 +297,7 @@ def test_process_playlist_with_opus() -> None:
             download_lyrics=True,
             download_thumbnails=True,
             audio_format="opus",
+            lyrics_min_confidence="high",
             browser=TEST_BROWSER,
         )
 
@@ -400,6 +429,7 @@ def test_process_playlist_continues_without_cookies(
         download_lyrics=True,
         download_thumbnails=True,
         audio_format="mp3",
+        lyrics_min_confidence="high",
     )
 
     output = capsys.readouterr().out
@@ -441,4 +471,140 @@ def test_process_playlist_explicit_browser_skips_detection() -> None:
         download_lyrics=True,
         download_thumbnails=True,
         audio_format="mp3",
+        lyrics_min_confidence="high",
+    )
+
+def test_process_track_writes_high_confidence_lyrics(
+    tmp_path: Path,
+) -> None:
+    """Save lyrics that meet the default high-confidence policy."""
+
+    track = make_track(1)
+    audio_path = tmp_path / "song.mp3"
+
+    with (
+        patch(
+            "ytmusic_dl.pipeline.download_track",
+            return_value=audio_path,
+        ),
+        patch("ytmusic_dl.pipeline.write_metadata"),
+        patch(
+            "ytmusic_dl.pipeline.search_candidates",
+            return_value=[make_lyrics_candidate("high")],
+        ),
+        patch(
+            "ytmusic_dl.pipeline.write_lyrics",
+        ) as mock_write,
+    ):
+        result = process_track(
+            track,
+            tmp_path,
+            download_thumbnails=False,
+        )
+
+    assert result.lyrics_written is True
+    mock_write.assert_called_once()
+
+def test_process_track_skips_medium_lyrics_by_default(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    """Do not save medium-confidence lyrics without opt-in."""
+
+    track = make_track(1)
+    audio_path = tmp_path / "song.mp3"
+
+    with (
+        patch(
+            "ytmusic_dl.pipeline.download_track",
+            return_value=audio_path,
+        ),
+        patch("ytmusic_dl.pipeline.write_metadata"),
+        patch(
+            "ytmusic_dl.pipeline.search_candidates",
+            return_value=[make_lyrics_candidate("medium")],
+        ),
+        patch(
+            "ytmusic_dl.pipeline.write_lyrics",
+        ) as mock_write,
+    ):
+        result = process_track(
+            track,
+            tmp_path,
+            download_thumbnails=False,
+        )
+
+    assert result.lyrics_written is False
+    mock_write.assert_not_called()
+
+    assert "Skipped lyrics: medium confidence" in (
+        capsys.readouterr().out
+    )
+
+def test_process_track_accepts_medium_when_configured(
+    tmp_path: Path,
+) -> None:
+    """Save medium-confidence lyrics when explicitly allowed."""
+
+    track = make_track(1)
+    audio_path = tmp_path / "song.mp3"
+
+    with (
+        patch(
+            "ytmusic_dl.pipeline.download_track",
+            return_value=audio_path,
+        ),
+        patch("ytmusic_dl.pipeline.write_metadata"),
+        patch(
+            "ytmusic_dl.pipeline.search_candidates",
+            return_value=[make_lyrics_candidate("medium")],
+        ),
+        patch(
+            "ytmusic_dl.pipeline.write_lyrics",
+        ) as mock_write,
+    ):
+        result = process_track(
+            track,
+            tmp_path,
+            download_thumbnails=False,
+            lyrics_min_confidence="medium",
+        )
+
+    assert result.lyrics_written is True
+    mock_write.assert_called_once()
+
+def test_process_track_reports_missing_lyrics(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    """Report when no candidate passes the checks."""
+
+    track = make_track(1)
+    audio_path = tmp_path / "song.mp3"
+
+    with (
+        patch(
+            "ytmusic_dl.pipeline.download_track",
+            return_value=audio_path,
+        ),
+        patch("ytmusic_dl.pipeline.write_metadata"),
+        patch(
+            "ytmusic_dl.pipeline.search_candidates",
+            return_value=[],
+        ),
+        patch(
+            "ytmusic_dl.pipeline.write_lyrics",
+        ) as mock_write,
+    ):
+        result = process_track(
+            track,
+            tmp_path,
+            download_thumbnails=False,
+        )
+
+    assert result.lyrics_written is False
+    mock_write.assert_not_called()
+
+    assert "No suitable lyrics found." in (
+        capsys.readouterr().out
     )

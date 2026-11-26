@@ -119,6 +119,7 @@ def test_main() -> None:
         download_lyrics=True,
         download_thumbnails=True,
         audio_format="mp3",
+        lyrics_min_confidence="high",
     )
 
 def test_main_without_lyrics_and_thumbnail() -> None:
@@ -178,6 +179,7 @@ def test_main_without_lyrics_and_thumbnail() -> None:
         download_lyrics=False,
         download_thumbnails=False,
         audio_format="mp3",
+        lyrics_min_confidence="high",
     )
 
 def test_main_extraction_failure(capsys) -> None:
@@ -347,6 +349,7 @@ def test_main_with_browser() -> None:
         download_lyrics=True,
         download_thumbnails=True,
         audio_format="mp3",
+        lyrics_min_confidence="high",
     )
 
 def test_main_with_unavailable_browser() -> None:
@@ -450,6 +453,7 @@ def test_main_without_browser_uses_automatic_detection() -> None:
         download_lyrics=True,
         download_thumbnails=True,
         audio_format="mp3",
+        lyrics_min_confidence="high",
     )
 
 def test_main_list_browsers() -> None:
@@ -611,4 +615,5 @@ def test_main_with_opus_format() -> None:
         download_lyrics=True,
         download_thumbnails=True,
         audio_format="opus",
+        lyrics_min_confidence="high",
     )
