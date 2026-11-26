@@ -2,11 +2,14 @@ import os
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 from ytmusic_dl.gui.environment import (
     ToolStatus,
     detect_tools,
     extend_path_with_tools,
     find_tool,
+    install_hint,
 )
 
 def test_find_tool_uses_explicit_path(tmp_path: Path) -> None:
@@ -84,3 +87,23 @@ def test_extend_path_with_tools(monkeypatch, tmp_path: Path) -> None:
     assert entries[0] == str(tools_dir)
     assert entries.count(str(tools_dir)) == 1
     assert "/usr/bin" in entries
+
+@pytest.mark.parametrize(
+    ("system", "name", "expected"),
+    [
+        ("Darwin", "ffmpeg", "brew install ffmpeg"),
+        ("Darwin", "ffprobe", "brew install ffmpeg"),
+        ("Darwin", "deno", "brew install deno"),
+        ("Linux", "ffmpeg", "sudo dnf install ffmpeg"),
+        ("Windows", "deno", "winget install DenoLand.Deno"),
+        ("Darwin", "unknown-tool", None),
+    ],
+)
+def test_install_hint(system, name, expected) -> None:
+    """Return platform-specific install commands."""
+
+    with patch(
+        "ytmusic_dl.gui.environment.platform.system",
+        return_value=system,
+    ):
+        assert install_hint(name) == expected

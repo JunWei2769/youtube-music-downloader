@@ -9,6 +9,7 @@ Responsibility: Environment detection
 """
 
 import os
+import platform
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -137,6 +138,37 @@ def detect_tools() -> dict[str, ToolStatus]:
         name: find_tool(name)
         for name in ("ffmpeg", "ffprobe", "deno")
     }
+
+def install_hint(name: str) -> str | None:
+    """Return a platform-specific install command for a tool."""
+
+    system = platform.system()
+
+    if name in {"ffmpeg", "ffprobe"}:
+        if system == "Darwin":
+            return "brew install ffmpeg"
+
+        if system == "Linux":
+            return "sudo dnf install ffmpeg"
+
+        if system == "Windows":
+            return "winget install Gyan.FFmpeg.Shared"
+
+        return None
+
+    if name == "deno":
+        if system == "Darwin":
+            return "brew install deno"
+
+        if system == "Linux":
+            return "sudo dnf install deno"
+
+        if system == "Windows":
+            return "winget install DenoLand.Deno"
+
+        return None
+
+    return None
 
 def extend_path_with_tools() -> None:
     """Prepend detected tool directories to PATH.

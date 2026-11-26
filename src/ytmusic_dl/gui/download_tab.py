@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QSettings, Qt
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -48,12 +48,17 @@ BROWSERS = (
 class DownloadTab(QWidget):
     """Download a playlist or track with live progress."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        settings: QSettings | None = None,
+    ) -> None:
         super().__init__()
 
+        self._settings = settings or QSettings()
         self._worker: DownloadWorker | None = None
 
         self._build_ui()
+        self._load_settings()
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
@@ -163,6 +168,93 @@ class DownloadTab(QWidget):
 
         self.lyrics_check.toggled.connect(
             self.confidence_combo.setEnabled
+        )
+
+    @staticmethod
+    def _select_combo_data(combo, value) -> None:
+        index = combo.findData(value)
+
+        if index >= 0:
+            combo.setCurrentIndex(index)
+
+    def _load_settings(self) -> None:
+        self.output_input.setText(
+            str(
+                self._settings.value(
+                    "download/output",
+                    str(DEFAULT_OUTPUT),
+                )
+            )
+        )
+
+        self._select_combo_data(
+            self.format_combo,
+            self._settings.value("download/format", "mp3"),
+        )
+
+        browser = self._settings.value(
+            "download/browser",
+            "",
+        )
+
+        if browser:
+            self._select_combo_data(
+                self.browser_combo,
+                browser,
+            )
+        else:
+            self.browser_combo.setCurrentIndex(0)
+
+        self.lyrics_check.setChecked(
+            self._settings.value(
+                "download/lyrics",
+                True,
+                type=bool,
+            )
+        )
+
+        self.thumbnail_check.setChecked(
+            self._settings.value(
+                "download/thumbnails",
+                True,
+                type=bool,
+            )
+        )
+
+        self._select_combo_data(
+            self.confidence_combo,
+            self._settings.value(
+                "download/confidence",
+                "high",
+            ),
+        )
+
+    def save_state(self) -> None:
+        """Persist download defaults."""
+
+        self._settings.setValue(
+            "download/output",
+            self.output_input.text().strip(),
+        )
+        self._settings.setValue(
+            "download/format",
+            self.format_combo.currentData(),
+        )
+        self._settings.setValue(
+            "download/browser",
+            self.browser_combo.currentData() or "",
+        )
+        self._settings.setValue(
+            "download/lyrics",
+            self.lyrics_check.isChecked(),
+        )
+        self._settings.setValue(
+            "download/thumbnails",
+            self.thumbnail_check.isChecked(),
+        )
+        self._settings.setValue(
+            "download/confidence",
+            self.confidence_combo.currentData(),
         )
 
     # ---------------------------------------------------------

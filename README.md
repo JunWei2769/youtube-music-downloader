@@ -489,7 +489,9 @@ The preview has three tabs: **Music Download**, **Lyrics Only**, and **Settings*
 
 - **Music Download** is functional: a playlist or track URL, output directory, audio format (including `source` and `m4a`), browser cookies, lyrics and thumbnail options, live per-track progress, cancellation, a download log, and a source/output quality report.
 - **Lyrics Only** is functional: search by title and artist or by YouTube Music URL, review every candidate with confidence and match reasons, preview synchronized or plain lyrics, and save to an `.lrc` file. Rejected candidates cannot be saved, and medium/low matches ask for confirmation.
-- **Settings** reports the detected FFmpeg, FFprobe, and Deno locations and versions, including installations outside `PATH`. Detected tool directories are added to `PATH` at startup so Finder launches work.
+- **Settings** reports the detected FFmpeg, FFprobe, and Deno locations and versions, including installations outside `PATH`. Detected tool directories are added to `PATH` at startup so Finder launches work. Missing tools show their install command (for example, `brew install ffmpeg` on macOS).
+
+Window size and the download and lyrics defaults are remembered between launches.
 
 PySide6 6.12 has been verified with Python 3.14 on macOS. Fedora testing is still pending.
 
@@ -625,7 +627,7 @@ uv run pytest -v
 Current test status:
 
 ```text
-195 passed
+204 passed
 ```
 
 The GUI tests are skipped when PySide6 is not installed.

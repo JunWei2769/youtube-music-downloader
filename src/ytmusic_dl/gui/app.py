@@ -18,6 +18,7 @@ def main() -> None:
 
     app = QApplication(sys.argv)
     app.setApplicationName("YouTube Music Downloader")
+    app.setApplicationDisplayName("YouTube Music Downloader")
     app.setOrganizationName("ytmusic-dl")
 
     window = MainWindow()

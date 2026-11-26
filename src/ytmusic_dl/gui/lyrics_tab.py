@@ -3,7 +3,7 @@
 import html
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QSettings, Qt
 from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (
     QFileDialog,
@@ -52,9 +52,13 @@ REJECTED_COLOR = QColor("#8a8a8a")
 class LyricsTab(QWidget):
     """Search providers and save a lyrics candidate."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        settings: QSettings | None = None,
+    ) -> None:
         super().__init__()
 
+        self._settings = settings or QSettings()
         self._query: LyricsQuery | None = None
         self._candidates: list[LyricsCandidate] = []
         self._search_worker: LyricsSearchWorker | None = None
@@ -63,6 +67,7 @@ class LyricsTab(QWidget):
         self._hydrating_candidate: LyricsCandidate | None = None
 
         self._build_ui()
+        self._load_settings()
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
@@ -181,6 +186,24 @@ class LyricsTab(QWidget):
         save_row.addWidget(self.save_button)
 
         layout.addLayout(save_row)
+
+    def _load_settings(self) -> None:
+        self.output_input.setText(
+            str(
+                self._settings.value(
+                    "lyrics/output",
+                    str(DEFAULT_OUTPUT),
+                )
+            )
+        )
+
+    def save_state(self) -> None:
+        """Persist the lyrics output directory."""
+
+        self._settings.setValue(
+            "lyrics/output",
+            self.output_input.text().strip(),
+        )
 
     # ---------------------------------------------------------
     # Search

@@ -9,12 +9,14 @@ pytest.importorskip("PySide6")
 
 from pathlib import Path
 
-from PySide6.QtWidgets import QApplication
+from PySide6.QtCore import QSettings
+from PySide6.QtWidgets import QApplication, QLabel
 
 from ytmusic_dl.downloader import AUDIO_FORMATS
 from ytmusic_dl.gui.download_tab import DownloadTab
 from ytmusic_dl.gui.environment import ToolStatus
 from ytmusic_dl.gui.lyrics_tab import COLUMNS, LyricsTab
+from ytmusic_dl.gui.window import SettingsTab
 from ytmusic_dl.gui.window import MainWindow
 from ytmusic_dl.models import (
     DownloadProgress,
@@ -47,6 +49,15 @@ def qt_app():
 
     yield app
 
+@pytest.fixture
+def app_settings(tmp_path):
+    """Provide an isolated QSettings store."""
+
+    return QSettings(
+        str(tmp_path / "settings.ini"),
+        QSettings.Format.IniFormat,
+    )
+
 def make_candidate(
     *,
     confidence: str = "high",
@@ -76,14 +87,14 @@ def make_candidate(
         ),
     )
 
-def test_main_window_has_three_tabs(qt_app) -> None:
+def test_main_window_has_three_tabs(qt_app, app_settings) -> None:
     """Build the main window with the expected tabs."""
 
     with patch(
         "ytmusic_dl.gui.window.detect_tools",
         return_value=TOOLS,
     ):
-        window = MainWindow()
+        window = MainWindow(settings=app_settings)
 
     assert window.tabs.count() == 3
 
@@ -100,10 +111,10 @@ def test_main_window_has_three_tabs(qt_app) -> None:
 
     assert qt_app is not None
 
-def test_lyrics_tab_has_expected_columns(qt_app) -> None:
+def test_lyrics_tab_has_expected_columns(qt_app, app_settings) -> None:
     """Show provider, score, and confidence columns."""
 
-    tab = LyricsTab()
+    tab = LyricsTab(settings=app_settings)
 
     assert tab.table.columnCount() == len(COLUMNS)
     assert tab.table.horizontalHeaderItem(1).text() == (
@@ -115,10 +126,10 @@ def test_lyrics_tab_has_expected_columns(qt_app) -> None:
 
     assert qt_app is not None
 
-def test_lyrics_tab_populates_candidates(qt_app) -> None:
+def test_lyrics_tab_populates_candidates(qt_app, app_settings) -> None:
     """Populate the table and preview from search results."""
 
-    tab = LyricsTab()
+    tab = LyricsTab(settings=app_settings)
 
     query = LyricsQuery(
         title="Test Song",
@@ -144,10 +155,10 @@ def test_lyrics_tab_populates_candidates(qt_app) -> None:
 
     assert qt_app is not None
 
-def test_lyrics_tab_rejects_rejected_candidates(qt_app) -> None:
+def test_lyrics_tab_rejects_rejected_candidates(qt_app, app_settings) -> None:
     """Rejected candidates cannot be saved."""
 
-    tab = LyricsTab()
+    tab = LyricsTab(settings=app_settings)
 
     tab._apply_results(
         LyricsQuery(
@@ -171,10 +182,10 @@ def test_lyrics_tab_rejects_rejected_candidates(qt_app) -> None:
 
     assert qt_app is not None
 
-def test_lyrics_tab_handles_empty_results(qt_app) -> None:
+def test_lyrics_tab_handles_empty_results(qt_app, app_settings) -> None:
     """Report when no candidates were found."""
 
-    tab = LyricsTab()
+    tab = LyricsTab(settings=app_settings)
 
     tab._apply_results(
         LyricsQuery(
@@ -192,10 +203,10 @@ def test_lyrics_tab_handles_empty_results(qt_app) -> None:
 
     assert qt_app is not None
 
-def test_download_tab_lists_all_formats(qt_app) -> None:
+def test_download_tab_lists_all_formats(qt_app, app_settings) -> None:
     """Offer every audio format, including source."""
 
-    tab = DownloadTab()
+    tab = DownloadTab(settings=app_settings)
 
     values = [
         tab.format_combo.itemData(index)
@@ -210,10 +221,10 @@ def test_download_tab_lists_all_formats(qt_app) -> None:
 
     assert qt_app is not None
 
-def test_download_tab_reports_progress(qt_app) -> None:
+def test_download_tab_reports_progress(qt_app, app_settings) -> None:
     """Update the progress bar and label from worker signals."""
 
-    tab = DownloadTab()
+    tab = DownloadTab(settings=app_settings)
     track = Track(
         playlist_index=1,
         title="Test Song",
@@ -244,10 +255,10 @@ def test_download_tab_reports_progress(qt_app) -> None:
 
     assert qt_app is not None
 
-def test_download_tab_summarises_results(qt_app) -> None:
+def test_download_tab_summarises_results(qt_app, app_settings) -> None:
     """Show the summary and failed tracks after a run."""
 
-    tab = DownloadTab()
+    tab = DownloadTab(settings=app_settings)
 
     tab._on_log("Processing: Test Song")
 
@@ -276,6 +287,103 @@ def test_download_tab_summarises_results(qt_app) -> None:
     assert "Processing: Test Song" in log
     assert "Failed tracks:" in log
     assert "02 - Other Song: boom" in log
+
+    tab.close()
+
+    assert qt_app is not None
+
+def test_download_tab_persists_settings(
+    qt_app,
+    app_settings,
+    tmp_path,
+) -> None:
+    """Restore download defaults from QSettings."""
+
+    tab = DownloadTab(settings=app_settings)
+
+    tab.output_input.setText(str(tmp_path / "music"))
+    tab.format_combo.setCurrentIndex(
+        tab.format_combo.findData("m4a")
+    )
+    tab.browser_combo.setCurrentIndex(
+        tab.browser_combo.findData("chrome")
+    )
+    tab.lyrics_check.setChecked(False)
+    tab.thumbnail_check.setChecked(False)
+    tab.confidence_combo.setCurrentIndex(
+        tab.confidence_combo.findData("medium")
+    )
+
+    tab.save_state()
+
+    restored = DownloadTab(settings=app_settings)
+
+    assert restored.output_input.text() == str(
+        tmp_path / "music"
+    )
+    assert restored.format_combo.currentData() == "m4a"
+    assert restored.browser_combo.currentData() == "chrome"
+    assert not restored.lyrics_check.isChecked()
+    assert not restored.thumbnail_check.isChecked()
+    assert (
+        restored.confidence_combo.currentData() == "medium"
+    )
+
+    restored.close()
+
+    assert qt_app is not None
+
+def test_lyrics_tab_persists_output(
+    qt_app,
+    app_settings,
+    tmp_path,
+) -> None:
+    """Restore the lyrics output directory."""
+
+    tab = LyricsTab(settings=app_settings)
+    tab.output_input.setText(str(tmp_path / "lyrics"))
+    tab.save_state()
+
+    restored = LyricsTab(settings=app_settings)
+
+    assert restored.output_input.text() == str(
+        tmp_path / "lyrics"
+    )
+
+    restored.close()
+
+    assert qt_app is not None
+
+def test_settings_tab_shows_install_hint(qt_app) -> None:
+    """Show an install command for missing tools."""
+
+    tools = {
+        "ffmpeg": ToolStatus(name="ffmpeg"),
+        "ffprobe": ToolStatus(name="ffprobe"),
+        "deno": ToolStatus(name="deno"),
+    }
+
+    with (
+        patch(
+            "ytmusic_dl.gui.window.detect_tools",
+            return_value=tools,
+        ),
+        patch(
+            "ytmusic_dl.gui.window.install_hint",
+            return_value="brew install ffmpeg",
+        ),
+    ):
+        tab = SettingsTab()
+
+    texts = [
+        label.text()
+        for label in tab.findChildren(QLabel)
+    ]
+
+    assert any(
+        "brew install ffmpeg" in text
+        for text in texts
+    )
 
     tab.close()
 

@@ -44,8 +44,8 @@ The application is organized into focused modules under `src/ytmusic_dl/`:
 
 At the time of this review:
 
-- 195 tests were collected.
-- 195 tests passed.
+- 204 tests were collected.
+- 204 tests passed.
 - GUI tests are skipped when PySide6 is not installed.
 - No tests depend on a local browser profile or usable YouTube cookies.
 - The README test status matches the suite.
@@ -164,6 +164,8 @@ At the time of this review:
 - [ ] Test Fedora under Wayland and X11.
 - [x] Test macOS terminal launch.
 - [x] Test a macOS Finder-like launch from a minimal environment (PATH-independent tool detection and window startup).
+- [x] Persist window geometry and download/lyrics defaults with `QSettings`.
+- [x] Show platform-specific install hints when FFmpeg or Deno is missing.
 - [ ] Test a real macOS Finder launch from a packaged `.app` (blocked on Phase 5 packaging).
 
 ### Phase 5: Packaging and Releases
