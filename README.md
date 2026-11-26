@@ -493,6 +493,8 @@ The preview has three tabs: **Music Download**, **Lyrics Only**, and **Settings*
 
 PySide6 6.12 has been verified with Python 3.14 on macOS. Fedora testing is still pending.
 
+On macOS, the app prepends detected Homebrew, `/usr/local`, and `~/.deno` directories to `PATH` at startup, so it works even when launched without the shell environment.
+
 ## Troubleshooting
 
 ### `HTTP Error 403: Forbidden`

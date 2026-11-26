@@ -162,7 +162,9 @@ At the time of this review:
 
   Detected tool directories are prepended to `PATH` at application startup, so Finder launches find the same tools as a shell.
 - [ ] Test Fedora under Wayland and X11.
-- [ ] Test macOS terminal and Finder launches.
+- [x] Test macOS terminal launch.
+- [x] Test a macOS Finder-like launch from a minimal environment (PATH-independent tool detection and window startup).
+- [ ] Test a real macOS Finder launch from a packaged `.app` (blocked on Phase 5 packaging).
 
 ### Phase 5: Packaging and Releases
 
