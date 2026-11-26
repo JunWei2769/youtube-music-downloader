@@ -111,6 +111,11 @@ At the time of this review:
 ### Phase 2: Lyrics Accuracy
 
 - [ ] Create a regression corpus for same-title, same-artist, version, cover, bilingual, missing-duration, and instrumental cases.
+  - Observed in real runs (2026-11-26):
+    - YouTube titles containing `Official Video` or `4K Remaster` cause NetEase to reject clean matches.
+    - NetEase filters rejected candidates internally, so the CLI cannot show why they lost.
+    - LRCLIB sometimes repeats the video title in the album field, so album comparison cannot be a strict requirement.
+    - A correct match with no known duration still reaches `medium` confidence.
 - [ ] Use aggressive title normalization for search only, not as sole proof of a correct match.
 - [ ] Include album, artist, title, duration, and version compatibility in scoring.
 - [ ] Penalize studio/live/acoustic/remix/cover/remaster mismatches.
