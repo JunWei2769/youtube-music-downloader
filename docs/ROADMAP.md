@@ -44,8 +44,8 @@ The application is organized into focused modules under `src/ytmusic_dl/`:
 
 At the time of this review:
 
-- 175 tests were collected.
-- 175 tests passed.
+- 184 tests were collected.
+- 184 tests passed.
 - GUI tests are skipped when PySide6 is not installed.
 - No tests depend on a local browser profile or usable YouTube cookies.
 - The README test status matches the suite.
@@ -153,10 +153,10 @@ At the time of this review:
   - Lyrics Only tab
   - Settings tab
 
-  The three tabs exist; only the Settings tab is functional so far.
-- [ ] Run network and download work in background workers.
-- [ ] Add progress, logging, cancellation, and completion signals.
-- [ ] Show lyrics candidates with confidence, match reasons, and previews.
+  The three tabs exist; the Lyrics Only and Settings tabs are functional, and Music Download is next.
+- [x] Run lyrics search, hydration, and saving in background workers.
+- [ ] Run downloads in background workers with progress, logging, cancellation, and completion signals.
+- [x] Show lyrics candidates with confidence, match reasons, and previews.
 - [ ] Add an audio-quality selector and source/output quality report.
 - [ ] Detect FFmpeg and Deno without relying exclusively on `PATH`.
 

@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 )
 
 from ytmusic_dl.gui.environment import detect_tools
+from ytmusic_dl.gui.lyrics_tab import LyricsTab
 
 class DownloadTab(QWidget):
     """Music download controls."""
@@ -37,26 +38,6 @@ class DownloadTab(QWidget):
             QLabel(
                 "Playlist and track download controls are being "
                 "wired up. Until then, use `ytmusic-dl URL`."
-            )
-        )
-        layout.addStretch(1)
-
-class LyricsTab(QWidget):
-    """Lyrics-only search and download controls."""
-
-    def __init__(self) -> None:
-        super().__init__()
-
-        layout = QVBoxLayout(self)
-
-        heading = QLabel("Lyrics Only")
-        heading.setStyleSheet("font-size: 18px; font-weight: 600;")
-
-        layout.addWidget(heading)
-        layout.addWidget(
-            QLabel(
-                "Lyrics search and candidate previews are being wired "
-                "up. Until then, use `ytmusic-dl lyrics search`."
             )
         )
         layout.addStretch(1)
@@ -119,3 +100,15 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(SettingsTab(), "Settings")
 
         self.setCentralWidget(self.tabs)
+
+    def closeEvent(self, event) -> None:
+        """Let tabs stop their background workers."""
+
+        for index in range(self.tabs.count()):
+            widget = self.tabs.widget(index)
+            shutdown = getattr(widget, "shutdown", None)
+
+            if callable(shutdown):
+                shutdown()
+
+        super().closeEvent(event)

@@ -485,7 +485,11 @@ uv tool install ".[gui]"
 ytmusic-dl-gui
 ```
 
-The preview has three tabs: **Music Download**, **Lyrics Only**, and **Settings**. Settings reports the detected FFmpeg, FFprobe, and Deno locations and versions, including installations outside `PATH`. Download and lyrics controls are being wired up next.
+The preview has three tabs: **Music Download**, **Lyrics Only**, and **Settings**.
+
+- **Lyrics Only** is functional: search by title and artist or by YouTube Music URL, review every candidate with confidence and match reasons, preview synchronized or plain lyrics, and save to an `.lrc` file. Rejected candidates cannot be saved, and medium/low matches ask for confirmation.
+- **Settings** reports the detected FFmpeg, FFprobe, and Deno locations and versions, including installations outside `PATH`.
+- **Music Download** is being wired up next.
 
 PySide6 6.12 has been verified with Python 3.14 on macOS. Fedora testing is still pending.
 
@@ -619,7 +623,7 @@ uv run pytest -v
 Current test status:
 
 ```text
-175 passed
+184 passed
 ```
 
 The GUI tests are skipped when PySide6 is not installed.
@@ -636,7 +640,7 @@ The test suite covers:
 - Metadata embedding
 - Thumbnail embedding
 - Download pipeline behavior
-- Desktop window construction and external tool detection
+- Desktop window, lyrics search/preview/save, and external tool detection
 
 The pipeline tests do not depend on a real browser profile or usable YouTube cookies, so the suite runs the same way on any machine.
 
