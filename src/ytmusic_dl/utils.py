@@ -38,6 +38,29 @@ def format_duration(seconds: float | None) -> str:
 
     return f"{minutes}:{seconds:02d}"
 
+def strip_artist_prefix(
+    title: str,
+    artist: str | None,
+) -> str:
+    """Remove a leading "Artist - " when it repeats the artist."""
+
+    if not artist:
+        return title
+
+    artist = artist.strip()
+
+    if not artist:
+        return title
+
+    pattern = re.compile(
+        rf"^\s*{re.escape(artist)}\s*[-–—]\s*",
+        re.IGNORECASE,
+    )
+
+    stripped = pattern.sub("", title, count=1).strip()
+
+    return stripped or title
+
 def build_track_filename(
     playlist_index: int,
     title: str,

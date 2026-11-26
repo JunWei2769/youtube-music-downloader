@@ -25,7 +25,11 @@ from ytmusic_dl.browser import (
     get_ytdlp_cookie_options,
 )
 from ytmusic_dl.models import DownloadInfo, Track
-from ytmusic_dl.utils import build_track_filename, ensure_directory
+from ytmusic_dl.utils import (
+    build_track_filename,
+    ensure_directory,
+    strip_artist_prefix,
+)
 
 AUDIO_FORMATS = (
     "mp3",
@@ -120,13 +124,21 @@ def extract_playlist(url: str) -> list[Track]:
     tracks = []
 
     for index, entry in enumerate(entries, start=1):
+        artist = (
+            cast(str | None, entry.get("artist"))
+            or cast(str | None, entry.get("uploader"))
+        )
+
+        title = cast(
+            str,
+            entry.get("track")
+            or entry.get("title", "Unknown"),
+        )
+
         track = Track(
             playlist_index=cast(int | None, entry.get("playlist_index")) or index,
-            title=cast(str, entry.get("title", "Unknown")),
-            artist=(
-                cast(str | None, entry.get("artist"))
-                or cast(str | None, entry.get("uploader"))
-            ),
+            title=strip_artist_prefix(title, artist),
+            artist=artist,
             album=(
                 cast(str | None, entry.get("album"))
                 or extract_album_name(playlist_name)
@@ -400,13 +412,21 @@ def extract_single_track(url: str) -> list[Track]:
     if info is None:
         return []
 
+    artist = (
+        cast(str | None, info.get("artist"))
+        or cast(str | None, info.get("uploader"))
+    )
+
+    title = cast(
+        str,
+        info.get("track")
+        or info.get("title", "Unknown"),
+    )
+
     track = Track(
         playlist_index=1,
-        title=cast(str, info.get("title", "Unknown")),
-        artist=(
-            cast(str | None, info.get("artist"))
-            or cast(str | None, info.get("uploader"))
-        ),
+        title=strip_artist_prefix(title, artist),
+        artist=artist,
         album=cast(str | None, info.get("album")),
         duration=cast(float | None, info.get("duration")),
         video_id=cast(str | None, info.get("id")),

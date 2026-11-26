@@ -8,6 +8,8 @@ from ytmusic_dl.browser import BrowserProfile
 from ytmusic_dl.downloader import (
     audio_file_exists,
     download_track,
+    extract_playlist,
+    extract_single_track,
     find_existing_audio,
 )
 from ytmusic_dl.models import Track
@@ -344,3 +346,90 @@ def test_download_track_falls_back_when_info_has_no_path(
         )
 
     assert result.path == expected_path
+
+def test_extract_single_track_strips_artist_prefix() -> None:
+    """Avoid repeating the artist in single-track titles."""
+
+    info = {
+        "title": (
+            "Rick Astley - Never Gonna Give You Up "
+            "(Official Video) (4K Remaster)"
+        ),
+        "uploader": "Rick Astley",
+        "duration": 213,
+        "id": "dQw4w9WgXcQ",
+        "webpage_url": "https://youtube.com/watch?v=dQw4w9WgXcQ",
+    }
+
+    with patch("ytmusic_dl.downloader.YoutubeDL") as mock_ydl:
+        mock_instance = MagicMock()
+        mock_ydl.return_value.__enter__.return_value = (
+            mock_instance
+        )
+        mock_instance.extract_info.return_value = info
+
+        tracks = extract_single_track(
+            "https://youtube.com/watch?v=dQw4w9WgXcQ"
+        )
+
+    assert len(tracks) == 1
+    assert tracks[0].title == (
+        "Never Gonna Give You Up (Official Video) (4K Remaster)"
+    )
+    assert tracks[0].artist == "Rick Astley"
+
+def test_extract_single_track_prefers_track_field() -> None:
+    """Use yt-dlp's clean track name when it is available."""
+
+    info = {
+        "title": "Rick Astley - Never Gonna Give You Up",
+        "track": "Never Gonna Give You Up",
+        "artist": "Rick Astley",
+        "duration": 213,
+        "id": "dQw4w9WgXcQ",
+    }
+
+    with patch("ytmusic_dl.downloader.YoutubeDL") as mock_ydl:
+        mock_instance = MagicMock()
+        mock_ydl.return_value.__enter__.return_value = (
+            mock_instance
+        )
+        mock_instance.extract_info.return_value = info
+
+        tracks = extract_single_track("https://youtube.com/watch")
+
+    assert tracks[0].title == "Never Gonna Give You Up"
+
+def test_extract_playlist_cleans_entry_titles() -> None:
+    """Apply the same title cleanup to playlist entries."""
+
+    info = {
+        "title": "Test Playlist",
+        "entries": [
+            {
+                "title": "Test Artist - First Song",
+                "uploader": "Test Artist",
+                "id": "one",
+                "duration": 200,
+            },
+            {
+                "title": "Test Artist - Second Song",
+                "track": "Second Song",
+                "artist": "Test Artist",
+                "id": "two",
+                "duration": 210,
+            },
+        ],
+    }
+
+    with patch("ytmusic_dl.downloader.YoutubeDL") as mock_ydl:
+        mock_instance = MagicMock()
+        mock_ydl.return_value.__enter__.return_value = (
+            mock_instance
+        )
+        mock_instance.extract_info.return_value = info
+
+        tracks = extract_playlist("https://youtube.com/playlist")
+
+    assert tracks[0].title == "First Song"
+    assert tracks[1].title == "Second Song"
