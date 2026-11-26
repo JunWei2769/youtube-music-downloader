@@ -1,3 +1,4 @@
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -10,10 +11,12 @@ from ytmusic_dl.lyrics import (
     _similarity,
     build_candidate,
     confidence_for_score,
+    fetch_missing_lyrics,
     find_best_lyrics,
     search_candidates,
     write_lyrics,
 )
+from ytmusic_dl.lyrics.providers.netease import MAX_LYRICS_FETCHES
 from ytmusic_dl.models import LyricsResult, Track
 
 
@@ -49,6 +52,62 @@ def make_result(
         synced_lyrics=synced,
         plain_lyrics=plain,
     )
+
+def make_netease_song(
+    song_id: int,
+    *,
+    title: str = "Test Song",
+    artist: str = "Test Artist",
+    duration_ms: int = 200000,
+) -> dict:
+    """Create a NetEase search result song."""
+
+    return {
+        "id": song_id,
+        "name": title,
+        "ar": [{"name": artist}],
+        "al": {"name": "Test Album"},
+        "dt": duration_ms,
+    }
+
+def make_netease_client(
+    songs: list[dict],
+    *,
+    lyrics: str = "[00:01.00] Test lyrics",
+) -> MagicMock:
+    """Create a mocked NetEase HTTP client."""
+
+    search_response = MagicMock()
+    search_response.raise_for_status.return_value = None
+    search_response.json.return_value = {
+        "code": 200,
+        "result": {"songs": songs},
+    }
+
+    lyrics_response = MagicMock()
+    lyrics_response.raise_for_status.return_value = None
+    lyrics_response.json.return_value = {
+        "lrc": {"lyric": lyrics},
+    }
+
+    discover_response = MagicMock()
+    discover_response.raise_for_status.return_value = None
+
+    client = MagicMock()
+
+    def mock_get(url: str, *args, **kwargs):
+        if url == "https://music.163.com/discover":
+            return discover_response
+
+        if url == "https://music.163.com/api/song/lyric":
+            return lyrics_response
+
+        raise AssertionError(f"Unexpected GET URL: {url}")
+
+    client.get.side_effect = mock_get
+    client.post.return_value = search_response
+
+    return client
 
 
 def test_normalize_text() -> None:
@@ -302,7 +361,9 @@ def test_netease_provider_initializes_lazily() -> None:
     assert provider.initialized is False
 
 
-def test_netease_search_filters_wrong_duration() -> None:
+def test_netease_search_keeps_wrong_duration_candidate() -> None:
+    """Return every candidate and hydrate only plausible ones."""
+
     track = make_track()
 
     search_response = MagicMock()
@@ -379,17 +440,28 @@ def test_netease_search_filters_wrong_duration() -> None:
 
     assert provider.initialized is True
 
-    assert len(results) == 1
+    assert len(results) == 2
 
-    result = results[0]
+    by_id = {
+        result.provider_id: result
+        for result in results
+    }
 
-    assert result.provider == "netease"
-    assert result.provider_id == "1"
-    assert result.duration == 200.0
-    assert result.synced_lyrics == "[00:01.00] Test lyrics"
+    assert by_id["1"].duration == 200.0
+    assert by_id["1"].synced_lyrics == "[00:01.00] Test lyrics"
+
+    # The wrong-duration candidate is still returned, but its
+    # lyrics are not fetched eagerly.
+    assert by_id["2"].duration == 350.0
+    assert by_id["2"].synced_lyrics is None
 
     assert mock_client.get.call_count == 2
-    assert mock_client.post.call_count == 1
+
+    expected_searches = len(
+        _build_netease_search_terms(track)
+    )
+
+    assert mock_client.post.call_count == expected_searches
 
 def test_netease_search_accepts_bilingual_youtube_music_title() -> None:
     track = Track(
@@ -505,7 +577,8 @@ def test_netease_search_handles_api_error_response() -> None:
     assert mock_client.get.call_count == 1
     assert mock_client.post.call_count == 1
 
-def test_netease_search_does_not_fetch_low_score_lyrics() -> None:
+def test_netease_search_keeps_low_score_candidate_without_lyrics() -> None:
+    """Return rejected candidates without fetching their lyrics."""
     track = make_track()
 
     search_response = MagicMock()
@@ -547,7 +620,10 @@ def test_netease_search_does_not_fetch_low_score_lyrics() -> None:
 
         results = provider.search(track)
 
-    assert results == []
+    assert len(results) == 1
+
+    assert results[0].provider_id == "999"
+    assert results[0].synced_lyrics is None
 
     # Only the initialization GET request should have been made.
     assert mock_client.get.call_count == 1
@@ -738,3 +814,153 @@ def test_search_candidates_scores_every_result() -> None:
         candidate.result.provider
         for candidate in candidates
     } == {"test", "netease"}
+
+def test_netease_search_hydrates_multiple_plausible_candidates() -> None:
+    """Fetch lyrics for every plausible candidate, not only the first."""
+
+    track = make_track()
+
+    songs = [
+        make_netease_song(song_id)
+        for song_id in (1, 2, 3)
+    ]
+
+    client = make_netease_client(songs)
+
+    with patch(
+        "ytmusic_dl.lyrics.httpx.Client",
+        return_value=client,
+    ):
+        provider = NetEaseProvider()
+
+        results = provider.search(track)
+
+    assert len(results) == 3
+
+    assert all(
+        result.synced_lyrics == "[00:01.00] Test lyrics"
+        for result in results
+    )
+
+    # One discovery request plus one lyrics request per candidate.
+    assert client.get.call_count == 1 + len(songs)
+
+def test_netease_search_caps_eager_lyrics_fetches() -> None:
+    """Return every candidate but hydrate at most the fetch cap."""
+
+    track = make_track()
+
+    songs = [
+        make_netease_song(song_id)
+        for song_id in range(1, MAX_LYRICS_FETCHES + 3)
+    ]
+
+    client = make_netease_client(songs)
+
+    with patch(
+        "ytmusic_dl.lyrics.httpx.Client",
+        return_value=client,
+    ):
+        provider = NetEaseProvider()
+
+        results = provider.search(track)
+
+    assert len(results) == len(songs)
+
+    hydrated = [
+        result
+        for result in results
+        if result.synced_lyrics
+    ]
+
+    assert len(hydrated) == MAX_LYRICS_FETCHES
+
+    assert client.get.call_count == (
+        1 + MAX_LYRICS_FETCHES
+    )
+
+def test_netease_fetch_lyrics_populates_content() -> None:
+    """Fetch lyrics on demand for an unhydrated candidate."""
+
+    result = make_result(provider="netease")
+    client = make_netease_client([])
+
+    with patch(
+        "ytmusic_dl.lyrics.httpx.Client",
+        return_value=client,
+    ):
+        provider = NetEaseProvider()
+
+    hydrated = provider.fetch_lyrics(result)
+
+    assert hydrated.synced_lyrics == "[00:01.00] Test lyrics"
+
+    # The original candidate is left untouched.
+    assert result.synced_lyrics is None
+
+def test_netease_fetch_lyrics_keeps_existing_content() -> None:
+    """Do not request lyrics that are already present."""
+
+    result = make_result(
+        provider="netease",
+        synced="[00:01.00] Existing",
+    )
+
+    client = make_netease_client([])
+
+    with patch(
+        "ytmusic_dl.lyrics.httpx.Client",
+        return_value=client,
+    ):
+        provider = NetEaseProvider()
+
+    hydrated = provider.fetch_lyrics(result)
+
+    assert hydrated is result
+    client.get.assert_not_called()
+
+class _HydratingProvider:
+    """Provider stub that hydrates candidates on demand."""
+
+    name = "netease"
+
+    def fetch_lyrics(self, result: LyricsResult) -> LyricsResult:
+        return replace(
+            result,
+            synced_lyrics="[00:01.00] Lazy lyrics",
+        )
+
+def test_find_best_lyrics_hydrates_selected_candidate() -> None:
+    """Fetch lyrics for the winner when providers return metadata only."""
+
+    result = make_result(provider="netease")
+
+    with patch(
+        "ytmusic_dl.lyrics.service.PROVIDERS",
+        (_HydratingProvider(),),
+    ):
+        best = find_best_lyrics(
+            make_track(),
+            [result],
+        )
+
+    assert best is not None
+    assert best.synced_lyrics == "[00:01.00] Lazy lyrics"
+
+    # The original metadata-only result is not mutated.
+    assert result.synced_lyrics is None
+
+def test_fetch_missing_lyrics_keeps_existing_content() -> None:
+    """Skip hydration when the result already has lyrics."""
+
+    result = make_result(
+        synced="[00:01.00] Existing",
+    )
+
+    with patch(
+        "ytmusic_dl.lyrics.service.PROVIDERS",
+        (_HydratingProvider(),),
+    ):
+        hydrated = fetch_missing_lyrics(result)
+
+    assert hydrated is result

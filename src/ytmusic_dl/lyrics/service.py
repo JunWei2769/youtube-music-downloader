@@ -7,6 +7,7 @@ from ytmusic_dl.lyrics.providers import (
     NetEaseProvider,
 )
 from ytmusic_dl.lyrics.scoring import (
+    MIN_TITLE_SIMILARITY,
     _artist_matches,
     _artist_similarity,
     _duration_score,
@@ -52,13 +53,14 @@ def build_candidate(
 
     if title_score >= 0.90:
         match_reasons.append("title matches")
-    elif title_score >= 0.60:
+    elif title_score >= MIN_TITLE_SIMILARITY:
         match_reasons.append(
             f"title similarity {title_score:.2f}"
         )
     else:
         rejection_reasons.append(
-            f"title similarity {title_score:.2f} is below 0.60"
+            f"title similarity {title_score:.2f} is below "
+            f"{MIN_TITLE_SIMILARITY:.2f}"
         )
 
     if not _artist_matches(
@@ -109,6 +111,20 @@ def build_candidate(
         rejection_reasons=rejection_reasons,
     )
 
+def fetch_missing_lyrics(
+    result: LyricsResult,
+) -> LyricsResult:
+    """Populate lyrics content using the provider that returned it."""
+
+    if result.synced_lyrics or result.plain_lyrics:
+        return result
+
+    for provider in PROVIDERS:
+        if provider.name == result.provider:
+            return provider.fetch_lyrics(result)
+
+    return result
+
 def search_lyrics(request: LyricsRequest) -> list[LyricsResult]:
     """Search all lyrics providers for matching candidates."""
 
@@ -158,7 +174,12 @@ def find_best_lyrics(
             best_score = candidate.score
             best_result = result
 
-    return best_result
+    if best_result is None:
+        return None
+
+    # Providers may return metadata-only candidates; fetch the
+    # winning candidate's lyrics before handing it to the writer.
+    return fetch_missing_lyrics(best_result)
 
 def get_lyrics(
     request: LyricsRequest,

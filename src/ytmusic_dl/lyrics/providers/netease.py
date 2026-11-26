@@ -1,6 +1,7 @@
 """NetEase Cloud Music lyrics provider."""
 
 import re
+from dataclasses import replace
 from typing import Any
 
 import httpx
@@ -11,11 +12,12 @@ from ytmusic_dl.lyrics.constants import (
 )
 from ytmusic_dl.lyrics.normalize import _normalize_text
 from ytmusic_dl.lyrics.scoring import (
-    MIN_MATCH_SCORE,
-    _duration_is_acceptable,
     _match_score,
+    _passes_basic_checks,
 )
 from ytmusic_dl.models import LyricsRequest, LyricsResult
+
+MAX_LYRICS_FETCHES = 5
 
 class NetEaseSearchUnavailable(Exception):
     """Raised when the NetEase search API is temporarily unavailable."""
@@ -244,7 +246,7 @@ class NetEaseProvider:
         self,
         track: LyricsRequest,
     ) -> list[LyricsResult]:
-        """Search NetEase and return validated lyric candidates."""
+        """Search NetEase and return every discovered candidate."""
 
         if not self._initialize():
             return []
@@ -267,43 +269,63 @@ class NetEaseProvider:
                     continue
 
                 seen_provider_ids.add(result.provider_id)
-
-                if not _duration_is_acceptable(
-                    track.duration,
-                    result.duration,
-                ):
-                    print(
-                        f"[NetEase] Rejected: duration mismatch "
-                        f"(track={track.duration}, "
-                        f"lyrics={result.duration})"
-                    )
-                    continue
-
-                score = _match_score(
-                    track,
-                    result,
-                )
-
-                if score < MIN_MATCH_SCORE:
-                    print(
-                        f"[NetEase] Rejected: "
-                        f"score {score:.3f} < {MIN_MATCH_SCORE}"
-                    )
-                    continue
-
-                lyrics = self._get_lyrics(
-                    result.provider_id
-                )
-
-                if lyrics is None:
-                    continue
-
-                result.synced_lyrics = lyrics
                 candidates.append(result)
 
-                return candidates
+        hydrated = self._hydrate_best_candidates(
+            track,
+            candidates,
+        )
 
-        return candidates
+        by_id = {
+            result.provider_id: result
+            for result in hydrated
+        }
+
+        return [
+            by_id.get(result.provider_id, result)
+            for result in candidates
+        ]
+
+    def _hydrate_best_candidates(
+        self,
+        track: LyricsRequest,
+        candidates: list[LyricsResult],
+    ) -> list[LyricsResult]:
+        """Fetch lyrics for the most promising candidates only."""
+
+        ranked = sorted(
+            candidates,
+            key=lambda result: _match_score(track, result),
+            reverse=True,
+        )
+
+        hydrated: list[LyricsResult] = []
+
+        for result in ranked:
+            if len(hydrated) >= MAX_LYRICS_FETCHES:
+                break
+
+            if not _passes_basic_checks(track, result):
+                continue
+
+            hydrated.append(
+                self.fetch_lyrics(result)
+            )
+
+        return hydrated
+
+    def fetch_lyrics(self, result: LyricsResult) -> LyricsResult:
+        """Fetch lyrics content for a discovered candidate."""
+
+        if result.synced_lyrics or result.plain_lyrics:
+            return result
+
+        lyrics = self._get_lyrics(result.provider_id)
+
+        if lyrics is None:
+            return result
+
+        return replace(result, synced_lyrics=lyrics)
 
     def _search_songs(
         self,

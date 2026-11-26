@@ -44,8 +44,8 @@ The application is organized into focused modules under `src/ytmusic_dl/`:
 
 At the time of this review:
 
-- 98 tests were collected.
-- 98 tests passed.
+- 108 tests were collected.
+- 108 tests passed.
 - No tests depend on a local browser profile or usable YouTube cookies.
 - The README test status matches the suite.
 - CI runs the suite on every push to `main` and on pull requests.
@@ -113,13 +113,15 @@ At the time of this review:
 - [ ] Create a regression corpus for same-title, same-artist, version, cover, bilingual, missing-duration, and instrumental cases.
   - Observed in real runs (2026-11-26):
     - YouTube titles containing `Official Video` or `4K Remaster` cause NetEase to reject clean matches.
-    - NetEase filters rejected candidates internally, so the CLI cannot show why they lost.
+    - NetEase filters rejected candidates internally, so the CLI cannot show why they lost. (Fixed: NetEase now returns every candidate; the service scores and explains them.)
     - LRCLIB sometimes repeats the video title in the album field, so album comparison cannot be a strict requirement.
     - A correct match with no known duration still reaches `medium` confidence.
+    - NetEase artist fields list many aliases, which depresses artist similarity even when the canonical name matches (`Rick Astley` scored 0.20).
+    - NetEase can return the same recording under different album names, so cross-candidate deduplication is needed.
 - [ ] Use aggressive title normalization for search only, not as sole proof of a correct match.
 - [ ] Include album, artist, title, duration, and version compatibility in scoring.
 - [ ] Penalize studio/live/acoustic/remix/cover/remaster mismatches.
-- [ ] Keep multiple NetEase candidates instead of returning the first accepted result.
+- [x] Keep multiple NetEase candidates instead of returning the first accepted result.
 - [ ] Deduplicate and compare candidates across providers.
 - [ ] Add confidence thresholds:
   - High confidence: automatic selection is allowed.

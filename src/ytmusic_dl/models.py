@@ -93,6 +93,10 @@ class LyricsProvider(Protocol):
         """Search the provider for lyrics candidates."""
         ...
 
+    def fetch_lyrics(self, result: LyricsResult) -> LyricsResult:
+        """Return a candidate with its lyrics content populated."""
+        ...
+
 @dataclass
 class PlaylistResult:
     """Result of processing a playlist."""

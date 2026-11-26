@@ -13,7 +13,7 @@ from ytmusic_dl.models import (
     LyricsResult,
 )
 
-MIN_MATCH_SCORE = 0.75
+MIN_TITLE_SIMILARITY = 0.60
 MAX_DURATION_DIFFERENCE = 10.0
 
 HIGH_CONFIDENCE_SCORE = 0.90
@@ -207,12 +207,27 @@ def _title_similarity(
         default=0.0,
     )
 
+def _passes_basic_checks(
+    request: LyricsRequest,
+    result: LyricsResult,
+) -> bool:
+    """Return whether a result clears the cheap rejection rules."""
+
+    return (
+        _title_similarity(request.title, result.track_name)
+        >= MIN_TITLE_SIMILARITY
+        and _artist_matches(request.artist, result.artist_name)
+        and _duration_is_acceptable(
+            request.duration,
+            result.duration,
+        )
+    )
+
 def _match_score(
     track: LyricsRequest,
     result: LyricsResult,
 ) -> float:
     """Calculate the overall match score for a lyrics result."""
-
     title_score = _title_similarity(
         track.title,
         result.track_name,

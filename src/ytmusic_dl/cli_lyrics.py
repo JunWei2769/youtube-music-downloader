@@ -13,6 +13,7 @@ from pathlib import Path
 
 from ytmusic_dl.downloader import extract_single_track
 from ytmusic_dl.lyrics import (
+    fetch_missing_lyrics,
     search_candidates,
     write_lyrics,
 )
@@ -55,6 +56,17 @@ def _add_query_arguments(
         type=float,
         metavar="SECONDS",
         help="Track duration in seconds",
+    )
+
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=10,
+        metavar="N",
+        help=(
+            "Maximum candidates to show, best first "
+            "(default: 10, 0 shows all)"
+        ),
     )
 
 def build_lyrics_parser() -> argparse.ArgumentParser:
@@ -195,6 +207,33 @@ def _sort_candidates(
         reverse=True,
     )
 
+def _limit_candidates(
+    candidates: list[LyricsCandidate],
+    limit: int,
+) -> list[LyricsCandidate]:
+    """Limit the candidates shown, keeping the highest scores."""
+
+    if limit <= 0:
+        return candidates
+
+    return candidates[:limit]
+
+def _print_hidden_count(
+    shown: int,
+    total: int,
+) -> None:
+    """Tell the user how many candidates were hidden."""
+
+    if shown >= total:
+        return
+
+    print(
+        f"Showing {shown} of {total} candidates. "
+        "Use --limit 0 to show all."
+    )
+
+    print()
+
 def _print_query(query: LyricsQuery) -> None:
     """Print the query being searched."""
 
@@ -264,7 +303,10 @@ def _run_search(
         search_candidates(query)
     )
 
-    _print_candidates(candidates)
+    shown = _limit_candidates(candidates, args.limit)
+
+    _print_candidates(shown)
+    _print_hidden_count(len(shown), len(candidates))
 
     return 0
 
@@ -347,12 +389,21 @@ def _run_download(
         search_candidates(query)
     )
 
-    _print_candidates(candidates)
+    shown = _limit_candidates(candidates, args.limit)
+
+    _print_candidates(shown)
+    _print_hidden_count(len(shown), len(candidates))
 
     if not candidates:
         return 1
 
-    candidate = _select_candidate(args, candidates)
+    # --select indexes the displayed list, while --best may use the
+    # full list so a display limit cannot hide the best accepted match.
+    selection_pool = (
+        shown if args.select is not None else candidates
+    )
+
+    candidate = _select_candidate(args, selection_pool)
 
     if candidate is None:
         return 1
@@ -370,7 +421,8 @@ def _run_download(
         return 0
 
     try:
-        write_lyrics(candidate.result, output_path)
+        result = fetch_missing_lyrics(candidate.result)
+        write_lyrics(result, output_path)
     except ValueError as error:
         print(f"Error: {error}")
         return 1

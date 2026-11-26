@@ -1,3 +1,4 @@
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
@@ -385,3 +386,152 @@ def test_lyrics_download_without_candidates(
 
     assert exit_code == 1
     assert "No lyrics candidates found." in capsys.readouterr().out
+
+def test_lyrics_download_hydrates_selected_candidate(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    """Fetch missing lyrics content before writing."""
+
+    candidate = make_candidate(synced=None, plain=None)
+
+    hydrated = replace(
+        candidate.result,
+        synced_lyrics="[00:09.00] Fetched lyrics",
+    )
+
+    with (
+        patch(
+            "ytmusic_dl.cli_lyrics.search_candidates",
+            return_value=[candidate],
+        ),
+        patch(
+            "ytmusic_dl.cli_lyrics.fetch_missing_lyrics",
+            return_value=hydrated,
+        ) as mock_fetch,
+    ):
+        exit_code = run_lyrics_command(
+            [
+                "download",
+                "Test Song",
+                "--artist",
+                "Test Artist",
+                "--best",
+                "--output",
+                str(tmp_path),
+            ]
+        )
+
+    assert exit_code == 0
+
+    output_path = tmp_path / "Test Artist - Test Song.lrc"
+
+    assert output_path.read_text(encoding="utf-8") == (
+        "[00:09.00] Fetched lyrics"
+    )
+
+    mock_fetch.assert_called_once_with(candidate.result)
+
+def test_lyrics_search_limits_candidates(capsys) -> None:
+    """Show only the best candidates by default."""
+
+    candidates = [
+        make_candidate(
+            provider=f"provider{index}",
+            score=1.0 - index / 100,
+        )
+        for index in range(12)
+    ]
+
+    with patch(
+        "ytmusic_dl.cli_lyrics.search_candidates",
+        return_value=candidates,
+    ):
+        exit_code = run_lyrics_command(
+            ["search", "Test Song", "--artist", "Test Artist"]
+        )
+
+    assert exit_code == 0
+
+    output = capsys.readouterr().out
+
+    assert "10. [high]" in output
+    assert "11. [" not in output
+    assert "Showing 10 of 12 candidates" in output
+
+def test_lyrics_search_limit_zero_shows_all(capsys) -> None:
+    """Allow disabling the display limit."""
+
+    candidates = [
+        make_candidate(
+            provider=f"provider{index}",
+            score=1.0 - index / 100,
+        )
+        for index in range(12)
+    ]
+
+    with patch(
+        "ytmusic_dl.cli_lyrics.search_candidates",
+        return_value=candidates,
+    ):
+        exit_code = run_lyrics_command(
+            [
+                "search",
+                "Test Song",
+                "--artist",
+                "Test Artist",
+                "--limit",
+                "0",
+            ]
+        )
+
+    assert exit_code == 0
+
+    output = capsys.readouterr().out
+
+    assert "12. [" in output
+    assert "Showing" not in output
+
+def test_lyrics_download_best_ignores_display_limit(
+    tmp_path: Path,
+) -> None:
+    """Pick the best accepted candidate even when it is not displayed."""
+
+    rejected = make_candidate(
+        provider="lrclib",
+        score=2.0,
+        synced="Rejected lyrics",
+        rejection_reasons=["artist does not match"],
+    )
+
+    accepted = make_candidate(
+        provider="netease",
+        score=1.0,
+        synced="[00:01.00] Accepted lyrics",
+    )
+
+    with patch(
+        "ytmusic_dl.cli_lyrics.search_candidates",
+        return_value=[accepted, rejected],
+    ):
+        exit_code = run_lyrics_command(
+            [
+                "download",
+                "Test Song",
+                "--artist",
+                "Test Artist",
+                "--best",
+                "--limit",
+                "1",
+                "--output",
+                str(tmp_path),
+            ]
+        )
+
+    assert exit_code == 0
+
+    output_path = tmp_path / "Test Artist - Test Song.lrc"
+
+    assert output_path.read_text(encoding="utf-8") == (
+        "[00:01.00] Accepted lyrics"
+    )

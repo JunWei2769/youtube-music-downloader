@@ -73,6 +73,11 @@ class LRCLIBProvider:
         except httpx.HTTPError:
             return []
 
+    def fetch_lyrics(self, result: LyricsResult) -> LyricsResult:
+        """LRCLIB includes lyrics content in search results."""
+
+        return result
+
     def _get_exact(
         self,
         track: LyricsRequest,
