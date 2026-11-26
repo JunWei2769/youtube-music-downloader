@@ -23,8 +23,10 @@ from ytmusic_dl.lyrics.constants import (
     USER_AGENT,
 )
 from ytmusic_dl.lyrics.normalize import (
+    _albums_match,
     _build_title_variants,
     _extract_editions,
+    _normalize_album,
     _normalize_text,
     _similarity,
 )
@@ -37,6 +39,7 @@ from ytmusic_dl.lyrics.providers import (
     _parse_netease_result,
 )
 from ytmusic_dl.lyrics.scoring import (
+    ALBUM_MATCH_BONUS,
     CONFIDENCE_ORDER,
     HIGH_CONFIDENCE_SCORE,
     MAJOR_EDITION_PENALTY,

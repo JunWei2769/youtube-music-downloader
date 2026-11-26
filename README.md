@@ -267,6 +267,7 @@ Lyrics candidates are validated using:
 - Track title similarity
 - Artist matching
 - Track duration
+- Album matching, as supporting evidence
 - Lyrics availability
 
 When multiple suitable results are available, synchronized lyrics are preferred.
@@ -536,7 +537,7 @@ uv run pytest -v
 Current test status:
 
 ```text
-141 passed
+149 passed
 ```
 
 The test suite covers:

@@ -7,11 +7,13 @@ from ytmusic_dl.lyrics.providers import (
     NetEaseProvider,
 )
 from ytmusic_dl.lyrics.normalize import (
+    _albums_match,
     _extract_editions,
     _normalize_text,
     _strip_title_noise,
 )
 from ytmusic_dl.lyrics.scoring import (
+    ALBUM_MATCH_BONUS,
     MAJOR_EDITION_PENALTY,
     MAX_EDITION_PENALTY,
     MIN_TITLE_SIMILARITY,
@@ -103,6 +105,14 @@ def build_candidate(
                 f"duration within {difference:.1f}s"
             )
 
+    album_matches = _albums_match(
+        request.album,
+        result.album_name,
+    )
+
+    if album_matches:
+        match_reasons.append("album matches")
+
     if result.synced_lyrics:
         match_reasons.append("synchronized lyrics available")
     elif result.plain_lyrics:
@@ -160,6 +170,10 @@ def build_candidate(
     # Prefer synced lyrics when metadata is otherwise equivalent.
     if result.synced_lyrics:
         score += 0.10
+
+    # Album confirmation is supporting evidence, never a requirement.
+    if album_matches:
+        score += ALBUM_MATCH_BONUS
 
     score = max(0.0, score - edition_penalty)
 
@@ -260,10 +274,7 @@ def _album_rank(
     if not album:
         return 1
 
-    if (
-        _normalize_text(request.album)
-        == _normalize_text(album)
-    ):
+    if _albums_match(request.album, album):
         return 2
 
     return 0

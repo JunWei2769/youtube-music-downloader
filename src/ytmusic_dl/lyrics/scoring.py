@@ -29,6 +29,7 @@ CONFIDENCE_ORDER = {
 NEUTRAL_EDITIONS = frozenset({"remaster"})
 MAJOR_EDITION_PENALTY = 0.25
 MAX_EDITION_PENALTY = 0.35
+ALBUM_MATCH_BONUS = 0.05
 
 def confidence_at_least(
     confidence: str,

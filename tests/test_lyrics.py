@@ -732,11 +732,12 @@ def test_build_candidate_explains_strong_match() -> None:
 
     assert candidate.accepted
     assert candidate.confidence == "high"
-    assert round(candidate.score, 2) == 1.10
+    assert round(candidate.score, 2) == 1.15
 
     assert "title matches" in candidate.match_reasons
     assert "artist matches" in candidate.match_reasons
     assert "duration within 0.0s" in candidate.match_reasons
+    assert "album matches" in candidate.match_reasons
 
     assert (
         "synchronized lyrics available"

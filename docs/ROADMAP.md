@@ -44,8 +44,8 @@ The application is organized into focused modules under `src/ytmusic_dl/`:
 
 At the time of this review:
 
-- 141 tests were collected.
-- 141 tests passed.
+- 149 tests were collected.
+- 149 tests passed.
 - No tests depend on a local browser profile or usable YouTube cookies.
 - The README test status matches the suite.
 - CI runs the suite on every push to `main` and on pull requests.
@@ -53,8 +53,7 @@ At the time of this review:
 ## Known Issues and Risks
 
 1. **Lyrics false positives**
-   - Album metadata is not included in final scoring.
-   - Missing durations are treated as acceptable, which caps those matches at `medium` confidence.
+   - Missing durations are treated as acceptable, which caps those matches at `medium` confidence unless the album also matches.
 
 2. **Audio quality limitations**
    - FLAC/WAV output does not improve the quality of a lossy YouTube source.
@@ -118,7 +117,7 @@ At the time of this review:
     - NetEase artist fields list many aliases, which depressed artist similarity even when the canonical name matched (`Rick Astley` scored 0.20). (Fixed: similarity now compares against the shorter artist list, so an alias match scores 1.0.)
     - NetEase can return the same recording under different album names, so cross-candidate deduplication is needed. (Fixed for exact duplicates: same provider, title, artist, and duration collapse, preferring lyrics content and a matching album.)
 - [x] Use aggressive title normalization for search only, not as sole proof of a correct match.
-- [ ] Include album, artist, title, duration, and version compatibility in scoring.
+- [x] Include album, artist, title, duration, and version compatibility in scoring.
 - [x] Penalize studio/live/acoustic/remix/cover/remaster mismatches.
 - [x] Keep multiple NetEase candidates instead of returning the first accepted result.
 - [ ] Deduplicate and compare candidates across providers.

@@ -275,3 +275,41 @@ def _extract_editions(title: str) -> frozenset[str]:
             editions.add(edition)
 
     return frozenset(editions)
+
+_ALBUM_NOISE = re.compile(
+    r"\b("
+    r"deluxe|expanded|anniversary|special|bonus|edition|"
+    r"remaster(?:ed)?(?:\s+\d{4})?|version|soundtrack"
+    r")\b",
+    re.IGNORECASE,
+)
+
+def _normalize_album(value: str | None) -> str:
+    """Normalize an album name for comparison."""
+
+    if not value:
+        return ""
+
+    text = _normalize_text(value)
+
+    # Edition and packaging details live in brackets, for example
+    # "Whenever You Need Somebody (Deluxe Edition / Remastered 2022)".
+    text = BRACKET_PATTERN.sub(" ", text)
+    text = _ALBUM_NOISE.sub(" ", text)
+    text = re.sub(r"\s+", " ", text)
+
+    return text.strip(" -–—|·.,")
+
+def _albums_match(
+    first: str | None,
+    second: str | None,
+) -> bool:
+    """Return whether two album names refer to the same album."""
+
+    first_normalized = _normalize_album(first)
+    second_normalized = _normalize_album(second)
+
+    return (
+        bool(first_normalized)
+        and first_normalized == second_normalized
+    )
