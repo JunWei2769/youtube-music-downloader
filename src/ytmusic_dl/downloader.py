@@ -14,22 +14,29 @@ Purpose: Everything related to yt-dlp
 Responsibility: YouTube Music / yt-dlp
 """
 
+import threading
+from collections.abc import Callable
 from pathlib import Path
 from typing import cast
 
 from yt_dlp import YoutubeDL
+from yt_dlp.utils import DownloadCancelled
 
 from ytmusic_dl.audio import probe_audio
 from ytmusic_dl.browser import (
     BrowserProfile,
     get_ytdlp_cookie_options,
 )
-from ytmusic_dl.models import DownloadInfo, Track
+from ytmusic_dl.models import DownloadInfo, DownloadProgress, Track
 from ytmusic_dl.utils import (
+    LogCallback,
     build_track_filename,
+    emit_message,
     ensure_directory,
     strip_artist_prefix,
 )
+
+ProgressCallback = Callable[[Track, DownloadProgress], None]
 
 AUDIO_FORMATS = (
     "mp3",
@@ -308,17 +315,115 @@ def _source_stream_info(
         str(extension) if extension else None,
     )
 
+def _build_progress_hook(
+    track: Track,
+    progress: ProgressCallback | None,
+    cancel_event: threading.Event | None,
+):
+    """Build a yt-dlp download progress hook."""
+
+    def hook(data: dict) -> None:
+        if (
+            cancel_event is not None
+            and cancel_event.is_set()
+        ):
+            raise DownloadCancelled(
+                "Download cancelled by the user."
+            )
+
+        if progress is None:
+            return
+
+        status = str(data.get("status") or "")
+
+        total = (
+            data.get("total_bytes")
+            or data.get("total_bytes_estimate")
+        )
+
+        downloaded = data.get("downloaded_bytes")
+
+        percent = None
+
+        if status == "finished":
+            percent = 100.0
+        elif total and downloaded is not None:
+            percent = min(
+                100.0,
+                downloaded / total * 100,
+            )
+
+        progress(
+            track,
+            DownloadProgress(
+                status=status,
+                percent=percent,
+                downloaded_bytes=downloaded,
+                total_bytes=total,
+                speed=data.get("speed"),
+                eta=data.get("eta"),
+                stage="download",
+            ),
+        )
+
+    return hook
+
+def _build_postprocessor_hook(
+    track: Track,
+    progress: ProgressCallback | None,
+    cancel_event: threading.Event | None,
+):
+    """Build a yt-dlp postprocessor hook."""
+
+    def hook(data: dict) -> None:
+        if (
+            cancel_event is not None
+            and cancel_event.is_set()
+        ):
+            raise DownloadCancelled(
+                "Download cancelled by the user."
+            )
+
+        if progress is None:
+            return
+
+        status = str(data.get("status") or "")
+
+        progress(
+            track,
+            DownloadProgress(
+                status=status,
+                percent=(
+                    100.0 if status == "finished" else None
+                ),
+                stage="postprocess",
+            ),
+        )
+
+    return hook
+
 def download_track(
     track: Track,
     output_directory: Path,
     audio_format: str = "mp3",
     *,
     browser: BrowserProfile | None = None,
+    progress: ProgressCallback | None = None,
+    log: LogCallback | None = None,
+    cancel_event: threading.Event | None = None,
 ) -> DownloadInfo:
     """Download a single track in the requested audio format."""
 
     if audio_format not in AUDIO_FORMATS:
         raise ValueError(f"Unsupported audio format: {audio_format}")
+
+    if (
+        cancel_event is not None
+        and cancel_event.is_set()
+    ):
+        raise DownloadCancelled(
+            "Download cancelled by the user."
+        )
 
     track_url = get_track_url(track)
 
@@ -331,7 +436,10 @@ def download_track(
     )
 
     if existing is not None:
-        print(f"Already exists, skipping: {existing.name}")
+        emit_message(
+            log,
+            f"Already exists, skipping: {existing.name}",
+        )
         track.audio_path = existing
         return DownloadInfo(path=existing, mode="skip")
 
@@ -350,13 +458,33 @@ def download_track(
         output_directory / f"{filename}.%(ext)s"
     )
 
+    detached_ui = progress is not None or log is not None
+
     options = {
-        "quiet": False,
+        "quiet": detached_ui,
+        "no_warnings": detached_ui,
+        "noprogress": detached_ui,
         "noplaylist": True,
         "format": "bestaudio/best",
         "outtmpl": output_template,
         "forceipv4": True,
     }
+
+    if progress is not None or cancel_event is not None:
+        options["progress_hooks"] = [
+            _build_progress_hook(
+                track,
+                progress,
+                cancel_event,
+            )
+        ]
+        options["postprocessor_hooks"] = [
+            _build_postprocessor_hook(
+                track,
+                progress,
+                cancel_event,
+            )
+        ]
 
     postprocessors = _build_postprocessors(audio_format)
 

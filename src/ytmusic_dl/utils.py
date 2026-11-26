@@ -10,8 +10,21 @@ Responsibility: Generic helpers
 """
 
 import re
+from collections.abc import Callable
 from pathlib import Path
 
+LogCallback = Callable[[str], None]
+
+def emit_message(
+    log: LogCallback | None,
+    message: str,
+) -> None:
+    """Print a message or forward it to a log sink."""
+
+    if log is None:
+        print(message)
+    else:
+        log(message)
 
 def sanitize_filename(name: str) -> str:
     """Remove characters that are unsafe for filenames."""

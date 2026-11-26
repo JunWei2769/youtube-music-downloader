@@ -20,27 +20,8 @@ from PySide6.QtWidgets import (
 )
 
 from ytmusic_dl.gui.environment import detect_tools
+from ytmusic_dl.gui.download_tab import DownloadTab
 from ytmusic_dl.gui.lyrics_tab import LyricsTab
-
-class DownloadTab(QWidget):
-    """Music download controls."""
-
-    def __init__(self) -> None:
-        super().__init__()
-
-        layout = QVBoxLayout(self)
-
-        heading = QLabel("Music Download")
-        heading.setStyleSheet("font-size: 18px; font-weight: 600;")
-
-        layout.addWidget(heading)
-        layout.addWidget(
-            QLabel(
-                "Playlist and track download controls are being "
-                "wired up. Until then, use `ytmusic-dl URL`."
-            )
-        )
-        layout.addStretch(1)
 
 class SettingsTab(QWidget):
     """Detected tools and application settings."""

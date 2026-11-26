@@ -9,7 +9,11 @@ Purpose: Coordinate the complete download process.
 Responsibility: Application workflow
 """
 
+import threading
+from collections.abc import Callable
 from pathlib import Path
+
+from yt_dlp.utils import DownloadCancelled
 
 from ytmusic_dl.audio import is_lossless
 from ytmusic_dl.browser import (
@@ -27,12 +31,28 @@ from ytmusic_dl.lyrics import (
 from ytmusic_dl.metadata import write_metadata
 from ytmusic_dl.models import (
     DownloadInfo,
+    DownloadProgress,
     PlaylistResult,
     Track,
     TrackResult,
 )
 from ytmusic_dl.thumbnail import download_thumbnail, embed_thumbnail
-from ytmusic_dl.utils import build_playlist_directory_name, ensure_directory
+from ytmusic_dl.utils import (
+    LogCallback,
+    build_playlist_directory_name,
+    emit_message,
+    ensure_directory,
+)
+
+TrackProgressCallback = Callable[
+    [Track, DownloadProgress],
+    None,
+]
+
+PlaylistProgressCallback = Callable[
+    [Track, DownloadProgress, int, int],
+    None,
+]
 
 
 def _describe_stream(
@@ -55,39 +75,43 @@ def _describe_stream(
 def _print_audio_report(
     download: DownloadInfo,
     audio_format: str,
+    log: LogCallback | None = None,
 ) -> None:
     """Report source and output audio details."""
 
     if download.mode == "skip":
         return
 
-    print(
+    emit_message(
+        log,
         "Source: "
         + _describe_stream(
             download.source_codec,
             download.source_bitrate,
             download.source_ext,
-        )
+        ),
     )
 
-    print(
+    emit_message(
+        log,
         "Output: "
         + _describe_stream(
             download.output_codec,
             download.output_bitrate,
-        )
+        ),
     )
 
-    print(f"Mode:   {download.mode}")
+    emit_message(log, f"Mode:   {download.mode}")
 
     if (
         audio_format in {"flac", "wav"}
         and download.source_codec
         and not is_lossless(download.source_codec)
     ):
-        print(
+        emit_message(
+            log,
             f"Warning: {audio_format.upper()} cannot restore quality "
-            f"from a lossy source ({download.source_codec})."
+            f"from a lossy source ({download.source_codec}).",
         )
 
 def process_track(
@@ -99,6 +123,9 @@ def process_track(
     download_thumbnails: bool = True,
     audio_format: str = "mp3",
     lyrics_min_confidence: str = "high",
+    progress: TrackProgressCallback | None = None,
+    log: LogCallback | None = None,
+    cancel_event: threading.Event | None = None,
 ) -> TrackResult:
     """Download and process a single track."""
 
@@ -111,11 +138,14 @@ def process_track(
         output_directory,
         audio_format=audio_format,
         browser=browser,
+        progress=progress,
+        log=log,
+        cancel_event=cancel_event,
     )
 
     audio_path = download.path
 
-    _print_audio_report(download, audio_format)
+    _print_audio_report(download, audio_format, log)
 
     # write metadata
     try:
@@ -124,7 +154,10 @@ def process_track(
             track,
         )
     except Exception as error:
-        print(f"Warning: Could not write metadata: {error}")
+        emit_message(
+            log,
+            f"Warning: Could not write metadata: {error}",
+        )
 
     # download and embed thumbnail
     if download_thumbnails:
@@ -138,7 +171,10 @@ def process_track(
 
             thumbnail_embedded = True
         except Exception as error:
-            print(f"Warning: Could not add thumbnail: {error}")
+            emit_message(
+                log,
+                f"Warning: Could not add thumbnail: {error}",
+            )
 
     # search and write lyrics
     if download_lyrics:
@@ -148,14 +184,15 @@ def process_track(
             )
 
             if best is None:
-                print("No suitable lyrics found.")
+                emit_message(log, "No suitable lyrics found.")
             elif not confidence_at_least(
                 best.confidence,
                 lyrics_min_confidence,
             ):
-                print(
+                emit_message(
+                    log,
                     f"Skipped lyrics: {best.confidence} confidence "
-                    f"(minimum: {lyrics_min_confidence})"
+                    f"(minimum: {lyrics_min_confidence})",
                 )
             else:
                 lyrics_path = output_directory / (
@@ -170,7 +207,10 @@ def process_track(
                 lyrics_written = True
 
         except Exception as error:
-            print(f"Warning: Could not get lyrics: {error}")
+            emit_message(
+                log,
+                f"Warning: Could not get lyrics: {error}",
+            )
 
     return TrackResult(
         audio_path=audio_path,
@@ -187,12 +227,15 @@ def process_playlist(
     download_thumbnails: bool = True,
     audio_format: str = "mp3",
     lyrics_min_confidence: str = "high",
+    log: LogCallback | None = None,
+    progress: PlaylistProgressCallback | None = None,
+    cancel_event: threading.Event | None = None,
 ) -> PlaylistResult:
     """Process all tracks in a playlist."""
 
     if not tracks:
-        print()
-        print("No tracks found in playlist.")
+        emit_message(log, "")
+        emit_message(log, "No tracks found in playlist.")
 
         return PlaylistResult(
             total=0,
@@ -223,13 +266,23 @@ def process_playlist(
     thumbnails = 0
     skipped_count = 0
     failed_tracks = []
+    cancelled = False
+    total = len(tracks)
 
-    for track in tracks:
-        print(f"Processing: {track.title}")
-        print(f"Artist:    {track.artist or 'Unknown'}")
-        print(f"Duration:  {track.duration or 'Unknown'}")
-        print(f"Video ID:  {track.video_id or 'Unknown'}")
-        print("-" * 50)
+    for index, track in enumerate(tracks, start=1):
+        if (
+            cancel_event is not None
+            and cancel_event.is_set()
+        ):
+            cancelled = True
+            emit_message(log, "Download cancelled.")
+            break
+
+        emit_message(log, f"Processing: {track.title}")
+        emit_message(log, f"Artist:    {track.artist or 'Unknown'}")
+        emit_message(log, f"Duration:  {track.duration or 'Unknown'}")
+        emit_message(log, f"Video ID:  {track.video_id or 'Unknown'}")
+        emit_message(log, "-" * 50)
 
         try:
             track_skipped = audio_file_exists(
@@ -239,9 +292,10 @@ def process_playlist(
             )
 
             if track_skipped:
-                print(
+                emit_message(
+                    log,
                     f"Skipped: {track.title} "
-                    f"(audio file already exists)"
+                    f"(audio file already exists)",
                 )
                 skipped_count += 1
                 continue
@@ -251,12 +305,33 @@ def process_playlist(
                 browser = find_browser_with_cookies()
 
                 if browser is None:
-                    print(
-                        "Warning: no supported browser with usable YouTube "
-                        "cookies was found. Continuing without cookies."
+                    emit_message(
+                        log,
+                        "Warning: no supported browser with usable "
+                        "YouTube cookies was found. Continuing "
+                        "without cookies.",
                     )
                 else:
-                    print(f"Using {browser.name} browser cookies")
+                    emit_message(
+                        log,
+                        f"Using {browser.name} browser cookies",
+                    )
+
+            track_progress = None
+
+            if progress is not None:
+                def track_progress(
+                    current_track: Track,
+                    update: DownloadProgress,
+                    track_index: int = index,
+                    track_total: int = total,
+                ) -> None:
+                    progress(
+                        current_track,
+                        update,
+                        track_index,
+                        track_total,
+                    )
 
             result = process_track(
                 track,
@@ -266,6 +341,9 @@ def process_playlist(
                 download_thumbnails=download_thumbnails,
                 audio_format=audio_format,
                 lyrics_min_confidence=lyrics_min_confidence,
+                progress=track_progress,
+                log=log,
+                cancel_event=cancel_event,
             )
 
             if result.lyrics_written:
@@ -276,18 +354,24 @@ def process_playlist(
 
             successful += 1
 
+        except DownloadCancelled:
+            cancelled = True
+            emit_message(log, "Download cancelled.")
+            break
+
         except Exception as error:
             failed += 1
             failed_tracks.append(
                 f"{track.playlist_index:02d} - {track.title}: {error}"
             )
 
-            print(
-                f"Failed: {track.title}: {error}"
+            emit_message(
+                log,
+                f"Failed: {track.title}: {error}",
             )
 
     return PlaylistResult(
-        total=len(tracks),
+        total=total,
         successful=successful,
         failed=failed,
         lyrics=lyrics,
@@ -295,4 +379,5 @@ def process_playlist(
         output_directory=playlist_directory,
         failed_tracks=failed_tracks,
         skipped=skipped_count,
+        cancelled=cancelled,
     )

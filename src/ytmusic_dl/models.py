@@ -110,6 +110,7 @@ class PlaylistResult:
     output_directory: Path
     failed_tracks: list[str]
     skipped: int
+    cancelled: bool = False
 
 @dataclass
 class TrackResult:
@@ -131,3 +132,15 @@ class DownloadInfo:
     source_ext: str | None = None
     output_codec: str | None = None
     output_bitrate: float | None = None
+
+@dataclass
+class DownloadProgress:
+    """Progress reported while downloading or converting audio."""
+
+    status: str = ""
+    percent: float | None = None
+    downloaded_bytes: int | None = None
+    total_bytes: int | None = None
+    speed: float | None = None
+    eta: float | None = None
+    stage: str = "download"

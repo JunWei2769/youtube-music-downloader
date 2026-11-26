@@ -44,8 +44,8 @@ The application is organized into focused modules under `src/ytmusic_dl/`:
 
 At the time of this review:
 
-- 184 tests were collected.
-- 184 tests passed.
+- 195 tests were collected.
+- 195 tests passed.
 - GUI tests are skipped when PySide6 is not installed.
 - No tests depend on a local browser profile or usable YouTube cookies.
 - The README test status matches the suite.
@@ -148,19 +148,19 @@ At the time of this review:
 - [x] Add a PySide6 entry point, optional `gui` dependency, and a main window skeleton.
 - [x] Verify PySide6 compatibility with Python 3.14 on macOS (PySide6 6.12.0).
 - [ ] Verify PySide6 compatibility with Python 3.14 on Fedora.
-- [ ] Create a PySide6 main window with:
+- [x] Create a PySide6 main window with:
   - Music Download tab
   - Lyrics Only tab
   - Settings tab
 
-  The three tabs exist; the Lyrics Only and Settings tabs are functional, and Music Download is next.
+  All three tabs are functional.
 - [x] Run lyrics search, hydration, and saving in background workers.
-- [ ] Run downloads in background workers with progress, logging, cancellation, and completion signals.
+- [x] Run downloads in background workers with progress, logging, cancellation, and completion signals.
 - [x] Show lyrics candidates with confidence, match reasons, and previews.
-- [ ] Add an audio-quality selector and source/output quality report.
-- [ ] Detect FFmpeg and Deno without relying exclusively on `PATH`.
+- [x] Add an audio-quality selector and source/output quality report.
+- [x] Detect FFmpeg and Deno without relying exclusively on `PATH`.
 
-  Detection is implemented in `ytmusic_dl/gui/environment.py`; the download pipeline still resolves FFmpeg through `PATH`.
+  Detected tool directories are prepended to `PATH` at application startup, so Finder launches find the same tools as a shell.
 - [ ] Test Fedora under Wayland and X11.
 - [ ] Test macOS terminal and Finder launches.
 

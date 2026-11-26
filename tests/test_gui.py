@@ -7,15 +7,22 @@ import pytest
 
 pytest.importorskip("PySide6")
 
+from pathlib import Path
+
 from PySide6.QtWidgets import QApplication
 
+from ytmusic_dl.downloader import AUDIO_FORMATS
+from ytmusic_dl.gui.download_tab import DownloadTab
 from ytmusic_dl.gui.environment import ToolStatus
 from ytmusic_dl.gui.lyrics_tab import COLUMNS, LyricsTab
 from ytmusic_dl.gui.window import MainWindow
 from ytmusic_dl.models import (
+    DownloadProgress,
     LyricsCandidate,
     LyricsQuery,
     LyricsResult,
+    PlaylistResult,
+    Track,
 )
 
 TOOLS = {
@@ -180,6 +187,95 @@ def test_lyrics_tab_handles_empty_results(qt_app) -> None:
     assert tab.table.rowCount() == 0
     assert "No lyrics candidates" in tab.status_label.text()
     assert not tab.save_button.isEnabled()
+
+    tab.close()
+
+    assert qt_app is not None
+
+def test_download_tab_lists_all_formats(qt_app) -> None:
+    """Offer every audio format, including source."""
+
+    tab = DownloadTab()
+
+    values = [
+        tab.format_combo.itemData(index)
+        for index in range(tab.format_combo.count())
+    ]
+
+    assert values == list(AUDIO_FORMATS)
+    assert tab.browser_combo.itemData(0) is None
+    assert not tab.cancel_button.isEnabled()
+
+    tab.close()
+
+    assert qt_app is not None
+
+def test_download_tab_reports_progress(qt_app) -> None:
+    """Update the progress bar and label from worker signals."""
+
+    tab = DownloadTab()
+    track = Track(
+        playlist_index=1,
+        title="Test Song",
+        artist="Test Artist",
+    )
+
+    tab._on_progress(
+        track,
+        DownloadProgress(percent=42.0, stage="download"),
+        1,
+        3,
+    )
+
+    assert tab.progress_bar.value() == 42
+    assert "track 1 of 3" in tab.progress_label.text()
+
+    tab._on_progress(
+        track,
+        DownloadProgress(stage="postprocess"),
+        3,
+        3,
+    )
+
+    assert tab.progress_bar.maximum() == 0
+    assert "Converting" in tab.progress_label.text()
+
+    tab.close()
+
+    assert qt_app is not None
+
+def test_download_tab_summarises_results(qt_app) -> None:
+    """Show the summary and failed tracks after a run."""
+
+    tab = DownloadTab()
+
+    tab._on_log("Processing: Test Song")
+
+    result = PlaylistResult(
+        total=2,
+        successful=1,
+        failed=1,
+        lyrics=1,
+        thumbnails=1,
+        output_directory=Path("downloads/test"),
+        failed_tracks=["02 - Other Song: boom"],
+        skipped=0,
+    )
+
+    tab._on_completed(result)
+
+    summary = tab.summary_label.text()
+
+    assert "Complete" in summary
+    assert "1 successful" in summary
+    assert "1 failed" in summary
+    assert "downloads/test" in summary
+
+    log = tab.log_view.toPlainText()
+
+    assert "Processing: Test Song" in log
+    assert "Failed tracks:" in log
+    assert "02 - Other Song: boom" in log
 
     tab.close()
 

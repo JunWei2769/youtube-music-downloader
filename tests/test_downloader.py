@@ -1,7 +1,10 @@
+import threading
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+
+from yt_dlp.utils import DownloadCancelled
 
 from ytmusic_dl.audio import AudioStreamInfo
 from ytmusic_dl.browser import BrowserProfile
@@ -12,7 +15,7 @@ from ytmusic_dl.downloader import (
     extract_single_track,
     find_existing_audio,
 )
-from ytmusic_dl.models import Track
+from ytmusic_dl.models import DownloadProgress, Track
 
 TEST_BROWSER = BrowserProfile(
     name="vivaldi",
@@ -433,3 +436,94 @@ def test_extract_playlist_cleans_entry_titles() -> None:
 
     assert tracks[0].title == "First Song"
     assert tracks[1].title == "Second Song"
+
+def test_download_track_reports_progress(
+    tmp_path: Path,
+) -> None:
+    """Forward yt-dlp progress to the callback."""
+
+    track = make_track()
+    output_directory = tmp_path / "downloads"
+
+    expected_path = (
+        output_directory
+        / "01 - Test Artist - Test Song.mp3"
+    )
+
+    updates: list[DownloadProgress] = []
+
+    with (
+        patch("ytmusic_dl.downloader.YoutubeDL") as mock_ydl,
+        patch("ytmusic_dl.downloader.ensure_directory"),
+        patch(
+            "ytmusic_dl.downloader.probe_audio",
+            return_value=AudioStreamInfo(
+                codec="mp3",
+                bitrate=320.0,
+            ),
+        ),
+    ):
+        mock_instance = MagicMock()
+        mock_ydl.return_value.__enter__.return_value = (
+            mock_instance
+        )
+
+        def fake_extract(url: str, download: bool) -> dict:
+            hook = mock_ydl.call_args.args[0][
+                "progress_hooks"
+            ][0]
+
+            hook(
+                {
+                    "status": "downloading",
+                    "downloaded_bytes": 50,
+                    "total_bytes": 100,
+                    "speed": 1000.0,
+                    "eta": 2,
+                }
+            )
+
+            expected_path.parent.mkdir(
+                parents=True,
+                exist_ok=True,
+            )
+            expected_path.touch()
+
+            return {
+                "requested_downloads": [
+                    {"filepath": str(expected_path)}
+                ]
+            }
+
+        mock_instance.extract_info.side_effect = fake_extract
+
+        result = download_track(
+            track,
+            output_directory,
+            audio_format="mp3",
+            progress=lambda current, update: updates.append(
+                update
+            ),
+        )
+
+    assert result.path == expected_path
+    assert len(updates) == 1
+    assert updates[0].percent == 50
+    assert updates[0].stage == "download"
+    assert updates[0].status == "downloading"
+
+def test_download_track_cancel_raises(
+    tmp_path: Path,
+) -> None:
+    """Raise before starting when cancellation is requested."""
+
+    cancel_event = threading.Event()
+    cancel_event.set()
+
+    with pytest.raises(DownloadCancelled):
+        download_track(
+            make_track(),
+            tmp_path / "downloads",
+            audio_format="mp3",
+            cancel_event=cancel_event,
+        )

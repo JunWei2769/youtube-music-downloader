@@ -1,9 +1,13 @@
+import threading
 from pathlib import Path
 from unittest.mock import patch
+
+from yt_dlp.utils import DownloadCancelled
 
 from ytmusic_dl.browser import BrowserProfile
 from ytmusic_dl.models import (
     DownloadInfo,
+    DownloadProgress,
     LyricsCandidate,
     LyricsResult,
     Track,
@@ -119,6 +123,9 @@ def test_process_playlist() -> None:
             download_thumbnails=True,
             audio_format="mp3",
             lyrics_min_confidence="high",
+            progress=None,
+            log=None,
+            cancel_event=None,
             browser=TEST_BROWSER,
         )
 
@@ -240,6 +247,9 @@ def test_process_playlist_without_lyrics_and_thumbnails() -> None:
             download_thumbnails=False,
             audio_format="mp3",
             lyrics_min_confidence="high",
+            progress=None,
+            log=None,
+            cancel_event=None,
             browser=TEST_BROWSER,
         )
 
@@ -299,6 +309,9 @@ def test_process_playlist_with_opus() -> None:
             download_thumbnails=True,
             audio_format="opus",
             lyrics_min_confidence="high",
+            progress=None,
+            log=None,
+            cancel_event=None,
             browser=TEST_BROWSER,
         )
 
@@ -431,6 +444,9 @@ def test_process_playlist_continues_without_cookies(
         download_thumbnails=True,
         audio_format="mp3",
         lyrics_min_confidence="high",
+        progress=None,
+        log=None,
+        cancel_event=None,
     )
 
     output = capsys.readouterr().out
@@ -473,6 +489,9 @@ def test_process_playlist_explicit_browser_skips_detection() -> None:
         download_thumbnails=True,
         audio_format="mp3",
         lyrics_min_confidence="high",
+        progress=None,
+        log=None,
+        cancel_event=None,
     )
 
 def test_process_track_writes_high_confidence_lyrics(
@@ -736,3 +755,99 @@ def test_process_track_survives_unsupported_metadata(
     assert "Warning: Could not write metadata" in (
         capsys.readouterr().out
     )
+
+def test_process_playlist_reports_track_progress() -> None:
+    """Forward per-track progress with index and total."""
+
+    tracks = [make_track(1), make_track(2)]
+    captured = []
+
+    def fake_process(
+        track,
+        directory,
+        *,
+        progress=None,
+        **kwargs,
+    ):
+        progress(track, DownloadProgress(percent=50.0))
+
+        return TrackResult(
+            audio_path=Path("song.mp3"),
+            lyrics_written=False,
+            thumbnail_embedded=False,
+        )
+
+    with (
+        patch(
+            "ytmusic_dl.pipeline.find_browser_with_cookies",
+            return_value=TEST_BROWSER,
+        ),
+        patch(
+            "ytmusic_dl.pipeline.audio_file_exists",
+            return_value=False,
+        ),
+        patch(
+            "ytmusic_dl.pipeline.process_track",
+            side_effect=fake_process,
+        ),
+    ):
+        process_playlist(
+            tracks,
+            Path("downloads/test"),
+            progress=lambda track, update, index, total: (
+                captured.append(
+                    (track.title, update.percent, index, total)
+                )
+            ),
+        )
+
+    assert captured == [
+        ("Test Song 1", 50.0, 1, 2),
+        ("Test Song 2", 50.0, 2, 2),
+    ]
+
+def test_process_playlist_cancel_event_stops_immediately() -> None:
+    """Stop before the first track when cancellation is set."""
+
+    cancel_event = threading.Event()
+    cancel_event.set()
+
+    result = process_playlist(
+        [make_track(1), make_track(2)],
+        Path("downloads/test"),
+        cancel_event=cancel_event,
+    )
+
+    assert result.cancelled
+    assert result.successful == 0
+    assert result.failed == 0
+    assert result.failed_tracks == []
+
+def test_process_playlist_marks_download_cancelled() -> None:
+    """Treat DownloadCancelled as a cancellation, not a failure."""
+
+    with (
+        patch(
+            "ytmusic_dl.pipeline.find_browser_with_cookies",
+            return_value=TEST_BROWSER,
+        ),
+        patch(
+            "ytmusic_dl.pipeline.audio_file_exists",
+            return_value=False,
+        ),
+        patch(
+            "ytmusic_dl.pipeline.process_track",
+            side_effect=DownloadCancelled(
+                "cancelled by test"
+            ),
+        ),
+    ):
+        result = process_playlist(
+            [make_track(1), make_track(2)],
+            Path("downloads/test"),
+        )
+
+    assert result.cancelled
+    assert result.successful == 0
+    assert result.failed == 0
+    assert result.failed_tracks == []

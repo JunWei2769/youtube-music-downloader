@@ -137,3 +137,38 @@ def detect_tools() -> dict[str, ToolStatus]:
         name: find_tool(name)
         for name in ("ffmpeg", "ffprobe", "deno")
     }
+
+def extend_path_with_tools() -> None:
+    """Prepend detected tool directories to PATH.
+
+    Desktop launches, especially from Finder, often do not inherit the
+    shell's PATH. Adding the detected directories keeps FFmpeg, FFprobe,
+    and Deno available to yt-dlp and the pipeline.
+    """
+
+    directories: list[str] = []
+
+    for status in detect_tools().values():
+        if not status.path:
+            continue
+
+        directory = str(Path(status.path).parent)
+
+        if directory not in directories:
+            directories.append(directory)
+
+    if not directories:
+        return
+
+    current = os.environ.get("PATH", "")
+    existing = current.split(os.pathsep) if current else []
+    missing = [
+        directory
+        for directory in directories
+        if directory not in existing
+    ]
+
+    if missing:
+        os.environ["PATH"] = os.pathsep.join(
+            missing + existing
+        )
