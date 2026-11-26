@@ -236,6 +236,23 @@ Default=1
     assert browsers[1].name == "firefox"
     assert browsers[1].path == firefox_profile
 
+def test_detect_whale_profiles(tmp_path: Path) -> None:
+    """Detect Naver Whale profiles using the Chromium layout."""
+
+    profile = tmp_path / ".config" / "naver-whale" / "Default"
+    profile.mkdir(parents=True)
+    (profile / "Cookies").touch()
+
+    with (
+        patch("ytmusic_dl.browser.platform.system", return_value="Linux"),
+        patch("ytmusic_dl.browser.Path.home", return_value=tmp_path),
+    ):
+        browsers = detect_browser_profiles()
+
+    assert browsers == [
+        BrowserProfile(name="whale", path=profile),
+    ]
+
 def test_find_browser_with_cookies_falls_back() -> None:
     """Return the first browser whose cookies can be loaded."""
 

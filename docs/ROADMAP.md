@@ -39,13 +39,11 @@ The application is organized into focused modules under `src/ytmusic_dl/`:
 
 At the time of this review:
 
-- 73 tests were collected.
-- 70 tests passed.
-- 3 tests failed because they depend on finding a real browser profile with usable YouTube cookies.
-- The README still states `65 passed`, which is outdated.
-- The working tree contained only a pre-existing untracked `.DS_Store`.
-
-The failing pipeline tests do not mock `find_browser_with_cookies`, so they fail in environments without usable browser cookies. They should be made environment-independent before adding new features.
+- 77 tests were collected.
+- 77 tests passed.
+- No tests depend on a local browser profile or usable YouTube cookies.
+- The README test status matches the suite.
+- CI runs the suite on every push to `main` and on pull requests.
 
 ## Known Issues and Risks
 
@@ -64,9 +62,6 @@ The failing pipeline tests do not mock `find_browser_with_cookies`, so they fail
 
 3. **Maintainability**
    - `lyrics.py` is over 1,000 lines and will become harder to extend as more providers and confidence logic are added.
-   - The lyrics user agent still reports version `0.1.0`.
-   - A pipeline comment still refers specifically to MP3 metadata.
-   - Whale and Safari paths exist in browser detection code but are not active detection targets or CLI choices.
 
 4. **Platform considerations**
    - Playlist extraction does not currently use browser cookies; only downloading does.
@@ -86,10 +81,12 @@ The failing pipeline tests do not mock `find_browser_with_cookies`, so they fail
 
 ### Phase 0: Baseline Cleanup
 
-- [ ] Make all pipeline tests independent of the local browser environment.
-- [ ] Update the README test-status section.
-- [ ] Correct outdated version strings and comments.
-- [ ] Confirm the existing music-download CLI remains backward compatible.
+- [x] Make all pipeline tests independent of the local browser environment.
+- [x] Update the README test-status section.
+- [x] Correct outdated version strings and comments.
+- [x] Confirm the existing music-download CLI remains backward compatible.
+- [x] Add a CI workflow that runs the test suite.
+- [x] Promote Naver Whale to an active browser and remove the unused Safari path.
 
 ### Phase 1: Lyrics-Only Foundation
 

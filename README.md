@@ -296,7 +296,9 @@ The downloader can use cookies from supported browsers through `yt-dlp`.
 
 This allows the downloader to access YouTube using an existing browser session when necessary.
 
-When no browser is specified, the downloader automatically searches detected browser profiles for usable YouTube cookies.
+When no browser is specified, the downloader automatically searches detected browser profiles for usable YouTube cookies. Cookie detection only runs when a track actually needs downloading, so re-running a playlist whose tracks already exist does not require cookies.
+
+If no usable cookies are found, the download continues without them, and `yt-dlp` reports any access errors per track.
 
 You can check detected browser profiles with:
 
@@ -321,6 +323,7 @@ The downloader can detect profiles from browsers including:
 - Firefox
 - Edge
 - Opera
+- Whale
 
 Whether usable YouTube cookies are available depends on the browser profile, operating system, and browser state.
 
@@ -480,7 +483,7 @@ uv run pytest -v
 Current test status:
 
 ```text
-65 passed
+77 passed
 ```
 
 The test suite covers:
@@ -493,6 +496,8 @@ The test suite covers:
 - Metadata embedding
 - Thumbnail embedding
 - Download pipeline behavior
+
+The pipeline tests do not depend on a real browser profile or usable YouTube cookies, so the suite runs the same way on any machine.
 
 You can also run the lyrics-specific tests:
 

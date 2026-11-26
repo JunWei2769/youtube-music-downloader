@@ -31,6 +31,21 @@ def test_build_parser() -> None:
     assert args.url == "https://music.youtube.com/playlist?list=test"
     assert args.output == Path("downloads/test")
 
+def test_build_parser_accepts_whale() -> None:
+    """Accept Naver Whale as a browser choice."""
+
+    parser = build_parser()
+
+    args = parser.parse_args(
+        [
+            "https://music.youtube.com/playlist?list=test",
+            "--browser",
+            "whale",
+        ]
+    )
+
+    assert args.browser == "whale"
+
 def test_version(capsys) -> None:
     """Test the CLI version option."""
     parser = build_parser()

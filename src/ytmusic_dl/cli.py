@@ -70,6 +70,7 @@ def build_parser() -> argparse.ArgumentParser:
             "firefox",
             "edge",
             "opera",
+            "whale",
         ),
         help="Browser to use for YouTube cookies",
     )

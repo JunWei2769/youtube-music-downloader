@@ -49,7 +49,7 @@ def process_track(
         browser=browser,
     )
 
-    # write MP3 metadata
+    # write metadata
     write_metadata(
         audio_path,
         track,
@@ -135,16 +135,8 @@ def process_playlist(
 
     ensure_directory(playlist_directory)
 
-    if browser is None:
-        browser = find_browser_with_cookies()
-
-        if browser is None:
-            raise RuntimeError(
-                "No supported browser with usable YouTube cookies was found. "
-                "Please log in to YouTube in a supported browser."
-            )
-
-    print(f"Using {browser.name} browser cookies")
+    # Only look for cookies once a track actually needs downloading.
+    cookie_detection_done = browser is not None
 
     successful = 0
     failed = 0
@@ -174,6 +166,18 @@ def process_playlist(
                 )
                 skipped_count += 1
                 continue
+
+            if not cookie_detection_done:
+                cookie_detection_done = True
+                browser = find_browser_with_cookies()
+
+                if browser is None:
+                    print(
+                        "Warning: no supported browser with usable YouTube "
+                        "cookies was found. Continuing without cookies."
+                    )
+                else:
+                    print(f"Using {browser.name} browser cookies")
 
             result = process_track(
                 track,

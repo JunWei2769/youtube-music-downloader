@@ -12,6 +12,7 @@ CHROMIUM_BROWSERS = {
     "brave",
     "edge",
     "opera",
+    "whale",
 }
 
 FIREFOX_BROWSERS = {
@@ -155,7 +156,6 @@ def get_browser_path() -> dict[str, Path]:
             "edge": config / "Microsoft Edge",
             "opera": config / "com.operasoftware.Opera",
             "whale": config / "Naver" / "Whale",
-            "safari": home / "Library" / "Safari",
         }
 
     if system == "Windows":

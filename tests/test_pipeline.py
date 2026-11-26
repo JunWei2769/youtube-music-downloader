@@ -54,7 +54,7 @@ def test_process_playlist() -> None:
         patch(
             "ytmusic_dl.pipeline.find_browser_with_cookies",
             return_value=TEST_BROWSER,
-        ),
+        ) as mock_find_browser,
         patch(
             "ytmusic_dl.pipeline.process_track",
             side_effect=results,
@@ -77,6 +77,7 @@ def test_process_playlist() -> None:
         Path("downloads/test") / "Test Playlist"
     )
 
+    assert mock_find_browser.call_count == 1
     assert mock_process.call_count == 3
 
     for track in tracks:
@@ -125,12 +126,18 @@ def test_process_playlist_failure() -> None:
         thumbnail_embedded=True,
     )
 
-    with patch(
-        "ytmusic_dl.pipeline.process_track",
-        side_effect=[
-            successful_result,
-            RuntimeError("Download failed"),
-        ],
+    with (
+        patch(
+            "ytmusic_dl.pipeline.find_browser_with_cookies",
+            return_value=TEST_BROWSER,
+        ),
+        patch(
+            "ytmusic_dl.pipeline.process_track",
+            side_effect=[
+                successful_result,
+                RuntimeError("Download failed"),
+            ],
+        ),
     ):
         result = process_playlist(
             tracks,
@@ -281,6 +288,10 @@ def test_process_playlist_with_skipped_tracks() -> None:
 
     with (
         patch(
+            "ytmusic_dl.pipeline.find_browser_with_cookies",
+            return_value=TEST_BROWSER,
+        ) as mock_find_browser,
+        patch(
             "ytmusic_dl.pipeline.audio_file_exists",
             side_effect=[True, False],
         ) as mock_exists,
@@ -302,6 +313,7 @@ def test_process_playlist_with_skipped_tracks() -> None:
     assert playlist_result.thumbnails == 1
 
     assert mock_exists.call_count == 2
+    assert mock_find_browser.call_count == 1
     assert mock_process.call_count == 1
     mock_process.assert_called_once()
 
@@ -313,6 +325,9 @@ def test_process_playlist_detects_existing_track(
     tracks = [make_track(1)]
 
     with (
+        patch(
+            "ytmusic_dl.pipeline.find_browser_with_cookies",
+        ) as mock_find_browser,
         patch(
             "ytmusic_dl.pipeline.audio_file_exists",
             return_value=True,
@@ -334,6 +349,8 @@ def test_process_playlist_detects_existing_track(
     assert playlist_result.lyrics == 0
     assert playlist_result.thumbnails == 0
 
+    mock_find_browser.assert_not_called()
+
     mock_exists.assert_called_once_with(
         tracks[0],
         tmp_path / "Test Playlist",
@@ -341,3 +358,87 @@ def test_process_playlist_detects_existing_track(
     )
 
     mock_process.assert_not_called()
+
+def test_process_playlist_continues_without_cookies(
+    capsys,
+) -> None:
+    """Test that a missing browser does not abort the playlist."""
+
+    tracks = [make_track(1)]
+
+    result = TrackResult(
+        audio_path=Path("song1.mp3"),
+        lyrics_written=True,
+        thumbnail_embedded=True,
+    )
+
+    with (
+        patch(
+            "ytmusic_dl.pipeline.find_browser_with_cookies",
+            return_value=None,
+        ) as mock_find_browser,
+        patch(
+            "ytmusic_dl.pipeline.process_track",
+            return_value=result,
+        ) as mock_process,
+    ):
+        playlist_result = process_playlist(
+            tracks,
+            Path("downloads/test"),
+        )
+
+    assert playlist_result.total == 1
+    assert playlist_result.successful == 1
+    assert playlist_result.failed == 0
+
+    mock_find_browser.assert_called_once()
+
+    mock_process.assert_called_once_with(
+        tracks[0],
+        Path("downloads/test") / "Test Playlist",
+        browser=None,
+        download_lyrics=True,
+        download_thumbnails=True,
+        audio_format="mp3",
+    )
+
+    output = capsys.readouterr().out
+
+    assert "Continuing without cookies" in output
+
+def test_process_playlist_explicit_browser_skips_detection() -> None:
+    """Test that an explicit browser skips automatic detection."""
+
+    tracks = [make_track(1)]
+
+    result = TrackResult(
+        audio_path=Path("song1.mp3"),
+        lyrics_written=False,
+        thumbnail_embedded=False,
+    )
+
+    with (
+        patch(
+            "ytmusic_dl.pipeline.find_browser_with_cookies",
+        ) as mock_find_browser,
+        patch(
+            "ytmusic_dl.pipeline.process_track",
+            return_value=result,
+        ) as mock_process,
+    ):
+        process_playlist(
+            tracks,
+            Path("downloads/test"),
+            browser=TEST_BROWSER,
+        )
+
+    mock_find_browser.assert_not_called()
+
+    mock_process.assert_called_once_with(
+        tracks[0],
+        Path("downloads/test") / "Test Playlist",
+        browser=TEST_BROWSER,
+        download_lyrics=True,
+        download_thumbnails=True,
+        audio_format="mp3",
+    )

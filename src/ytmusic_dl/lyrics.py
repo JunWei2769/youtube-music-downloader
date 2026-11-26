@@ -15,6 +15,7 @@ Responsibility: Lyrics providers / lyrics matching
 
 import re
 from difflib import SequenceMatcher
+from importlib.metadata import version as package_version
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -27,7 +28,10 @@ LRCLIB_API_URL = "https://lrclib.net/api"
 NETEASE_SEARCH_URL = "https://music.163.com/api/cloudsearch/pc"
 NETEASE_LYRICS_URL = "https://music.163.com/api/song/lyric"
 
-USER_AGENT = "youtube-music-downloader/0.1.0"
+USER_AGENT = (
+    f"youtube-music-downloader/"
+    f"{package_version('youtube-music-downloader')}"
+)
 
 MIN_MATCH_SCORE = 0.75
 MAX_DURATION_DIFFERENCE = 10.0
