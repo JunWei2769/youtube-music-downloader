@@ -44,8 +44,8 @@ The application is organized into focused modules under `src/ytmusic_dl/`:
 
 At the time of this review:
 
-- 161 tests were collected.
-- 161 tests passed.
+- 164 tests were collected.
+- 164 tests passed.
 - No tests depend on a local browser profile or usable YouTube cookies.
 - The README test status matches the suite.
 - CI runs the suite on every push to `main` and on pull requests.
@@ -63,6 +63,8 @@ At the time of this review:
    - Playlist extraction does not currently use browser cookies; only downloading does.
    - `forceipv4` is hardcoded.
    - A future macOS desktop app must not rely solely on `PATH` to locate FFmpeg or Deno when launched from Finder.
+   - Chromium profiles can contain newer extension cookie databases under `Storage/ext`; the downloader copies the primary database into a temporary profile before handing it to `yt-dlp`.
+   - Chrome cookie access requires Full Disk Access for the host app on macOS.
 
 ## Planned Direction
 
@@ -138,7 +140,7 @@ At the time of this review:
 - [x] Make conversion quality explicit for MP3, Opus, and AAC modes.
 - [x] Report source codec/bitrate, output codec/bitrate, and copy/remux/transcode status.
 - [x] Warn when FLAC/WAV is selected from a lossy source.
-- [ ] Verify real downloads with `yt-dlp -F` and `ffprobe`.
+- [x] Verify real downloads with `yt-dlp -F` and `ffprobe`.
 
 ### Phase 4: Native Desktop Application
 

@@ -497,6 +497,19 @@ You can verify that `yt-dlp` is using Deno by looking for:
 [youtube] [jsc:deno] Solving JS challenges using deno
 ```
 
+If Deno is installed and the error continues, update the dependency — YouTube changes its player frequently and older `yt-dlp` releases stop solving the current challenges:
+
+```bash
+uv lock --upgrade-package yt-dlp
+uv sync
+```
+
+For an installed CLI, reinstall it afterwards:
+
+```bash
+uv tool install --force .
+```
+
 ## Output
 
 Each download gets its own directory based on the playlist or track name.
@@ -580,7 +593,7 @@ uv run pytest -v
 Current test status:
 
 ```text
-161 passed
+164 passed
 ```
 
 The test suite covers:
