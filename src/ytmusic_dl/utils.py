@@ -55,6 +55,20 @@ def build_track_filename(
 
     return filename
 
+def build_lyrics_filename(
+    title: str,
+    artist: str | None = None,
+) -> str:
+    """Build a filename for a standalone lyrics file."""
+
+    safe_title = sanitize_filename(title)
+
+    if artist:
+        safe_artist = sanitize_filename(artist)
+        return f"{safe_artist} - {safe_title}"
+
+    return safe_title
+
 def build_playlist_directory_name(name: str | None) -> str:
     """Build a safe directory name for a playlist."""
 

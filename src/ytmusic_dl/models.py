@@ -8,8 +8,9 @@ Purpose: Define the application's data structures
 Responsibility: Application data structures
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Literal, Protocol
 
 
 @dataclass
@@ -47,6 +48,50 @@ class LyricsResult:
     instrumental: bool
     synced_lyrics: str | None
     plain_lyrics: str | None
+
+@dataclass
+class LyricsCandidate:
+    """A lyrics result scored against a query."""
+
+    result: LyricsResult
+    score: float
+    confidence: Literal["high", "medium", "low"]
+    match_reasons: list[str] = field(default_factory=list)
+    rejection_reasons: list[str] = field(default_factory=list)
+
+    @property
+    def accepted(self) -> bool:
+        """Return whether the result passed all rejection checks."""
+
+        return not self.rejection_reasons
+
+class LyricsRequest(Protocol):
+    """Metadata needed to search for and score lyrics."""
+
+    title: str
+    artist: str | None
+    album: str | None
+    duration: float | None
+
+@dataclass
+class LyricsQuery:
+    """Metadata for a lyrics-only search or download."""
+
+    title: str
+    artist: str | None = None
+    album: str | None = None
+    duration: float | None = None
+    video_id: str | None = None
+    webpage_url: str | None = None
+
+class LyricsProvider(Protocol):
+    """Interface implemented by lyrics providers."""
+
+    name: str
+
+    def search(self, request: LyricsRequest) -> list[LyricsResult]:
+        """Search the provider for lyrics candidates."""
+        ...
 
 @dataclass
 class PlaylistResult:

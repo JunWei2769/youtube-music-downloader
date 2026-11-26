@@ -290,6 +290,49 @@ You can disable lyrics completely with:
 ytmusic-dl "PLAYLIST_URL" --no-lyrics
 ```
 
+### Search and download lyrics without audio
+
+The `lyrics` commands search providers and write lyrics without downloading any audio and without requiring browser cookies.
+
+Search without saving anything:
+
+```bash
+ytmusic-dl lyrics search "空耳 + 还你茉莉 (Live)" --artist "单依纯"
+```
+
+Save the best match:
+
+```bash
+ytmusic-dl lyrics download "空耳 + 还你茉莉 (Live)" --artist "单依纯" --best
+```
+
+Save a specific candidate from the search list:
+
+```bash
+ytmusic-dl lyrics download "空耳 + 还你茉莉 (Live)" --artist "单依纯" --select 2
+```
+
+Use a YouTube Music track URL instead of a title and artist:
+
+```bash
+ytmusic-dl lyrics download "https://music.youtube.com/watch?v=VIDEO_ID" --best
+```
+
+Each candidate shows its provider, score, confidence (`high`, `medium`, `low`), match reasons, and rejection reasons. `--best` only saves a candidate at or above `--min-confidence` (default `medium`); use `--select N` to choose a candidate manually.
+
+Files are written to `downloads/lyrics/` by default as `<Artist> - <Title>.lrc`. Synchronized lyrics are preferred, with plain lyrics as a fallback. Existing files are not replaced unless you pass `--overwrite`.
+
+| Option                   | Description                                          |
+| ------------------------ | ---------------------------------------------------- |
+| `--artist NAME`          | Artist name (required when searching by title)       |
+| `--album NAME`           | Album name                                           |
+| `--duration SECONDS`     | Track duration used for matching                     |
+| `--best`                 | Save the highest-scoring accepted candidate          |
+| `--select N`             | Save candidate N from the search list                |
+| `--min-confidence LEVEL` | Minimum confidence for `--best`: `high`, `medium`, `low` |
+| `-o, --output DIR`       | Output directory. Default: `downloads/lyrics`        |
+| `--overwrite`            | Replace an existing lyrics file                      |
+
 ## Browser Cookies
 
 The downloader can use cookies from supported browsers through `yt-dlp`.
@@ -483,7 +526,7 @@ uv run pytest -v
 Current test status:
 
 ```text
-77 passed
+98 passed
 ```
 
 The test suite covers:
@@ -493,6 +536,8 @@ The test suite covers:
 - Audio downloading
 - MP3, Opus, FLAC, and WAV output configuration
 - Lyrics providers and matching
+- Lyrics confidence, match reasons, and rejection reasons
+- Lyrics-only search and download commands
 - Metadata embedding
 - Thumbnail embedding
 - Download pipeline behavior

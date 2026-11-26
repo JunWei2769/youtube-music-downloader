@@ -29,7 +29,12 @@ The application is organized into focused modules under `src/ytmusic_dl/`:
 - `downloader.py`: `yt-dlp` extraction and audio downloading
 - `browser.py`: browser profile and cookie detection
 - `pipeline.py`: audio, metadata, thumbnail, and lyrics orchestration
-- `lyrics.py`: provider integrations, search normalization, scoring, and writing
+- `lyrics/`: lyrics package
+  - `normalize.py`: text normalization and title variants
+  - `scoring.py`: title, artist, and duration scoring and confidence
+  - `providers/`: LRCLIB and NetEase provider integrations
+  - `service.py`: search, candidate scoring, selection, and writing
+- `cli_lyrics.py`: lyrics-only search and download commands
 - `metadata.py`: format-specific metadata embedding
 - `thumbnail.py`: thumbnail downloading and artwork embedding
 - `models.py`: shared dataclasses
@@ -39,8 +44,8 @@ The application is organized into focused modules under `src/ytmusic_dl/`:
 
 At the time of this review:
 
-- 77 tests were collected.
-- 77 tests passed.
+- 98 tests were collected.
+- 98 tests passed.
 - No tests depend on a local browser profile or usable YouTube cookies.
 - The README test status matches the suite.
 - CI runs the suite on every push to `main` and on pull requests.
@@ -60,10 +65,7 @@ At the time of this review:
    - The application does not currently expose a source-preserving output mode.
    - Source and output codec/bitrate information is not reported.
 
-3. **Maintainability**
-   - `lyrics.py` is over 1,000 lines and will become harder to extend as more providers and confidence logic are added.
-
-4. **Platform considerations**
+3. **Platform considerations**
    - Playlist extraction does not currently use browser cookies; only downloading does.
    - `forceipv4` is hardcoded.
    - A future macOS desktop app must not rely solely on `PATH` to locate FFmpeg or Deno when launched from Finder.
@@ -90,11 +92,11 @@ At the time of this review:
 
 ### Phase 1: Lyrics-Only Foundation
 
-- [ ] Add a `LyricsQuery` model with title, artist, album, duration, and optional source URL.
-- [ ] Add a shared lyrics service used by both CLI and future GUI code.
-- [ ] Return structured candidates containing provider metadata, scores, and rejection reasons.
-- [ ] Ensure lyrics-only operation never downloads audio or requires browser cookies.
-- [ ] Add CLI commands:
+- [x] Add a `LyricsQuery` model with title, artist, album, duration, and optional source URL.
+- [x] Add a shared lyrics service used by both CLI and future GUI code.
+- [x] Return structured candidates containing provider metadata, scores, and rejection reasons.
+- [x] Ensure lyrics-only operation never downloads audio or requires browser cookies.
+- [x] Add CLI commands:
 
   ```bash
   ytmusic-dl lyrics search "Song Title" --artist "Artist Name"
@@ -102,9 +104,9 @@ At the time of this review:
   ytmusic-dl lyrics download "https://music.youtube.com/watch?v=VIDEO_ID" --best
   ```
 
-- [ ] Support `--best`, `--select N`, `--min-confidence`, output directories, and overwrite protection.
-- [ ] Default to synchronized lyrics when available, with plain-text output as fallback.
-- [ ] Add unit and CLI tests for lyrics-only behavior.
+- [x] Support `--best`, `--select N`, `--min-confidence`, output directories, and overwrite protection.
+- [x] Default to synchronized lyrics when available, with plain-text output as fallback.
+- [x] Add unit and CLI tests for lyrics-only behavior.
 
 ### Phase 2: Lyrics Accuracy
 

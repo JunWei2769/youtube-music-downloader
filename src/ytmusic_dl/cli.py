@@ -5,10 +5,12 @@ Responsibility: User interaction and command-line arguments.
 """
 
 import argparse
+import sys
 from importlib.metadata import version
 from pathlib import Path
 
 from ytmusic_dl.browser import find_browser, list_browsers
+from ytmusic_dl.cli_lyrics import run_lyrics_command
 from ytmusic_dl.downloader import extract_playlist, extract_single_track
 from ytmusic_dl.pipeline import process_playlist
 
@@ -18,7 +20,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     parser = argparse.ArgumentParser(
         prog="ytmusic-dl",
-        description="Download music from YouTube Music playlists or tracks."
+        description="Download music from YouTube Music playlists or tracks.",
+        epilog=(
+            "Lyrics-only commands: "
+            "ytmusic-dl lyrics search --help, "
+            "ytmusic-dl lyrics download --help"
+        ),
     )
 
     parser.add_argument(
@@ -85,6 +92,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main() -> None:
     """Run the command-line application."""
+
+    if len(sys.argv) > 1 and sys.argv[1] == "lyrics":
+        sys.exit(run_lyrics_command(sys.argv[2:]))
 
     parser = build_parser()
     args = parser.parse_args()

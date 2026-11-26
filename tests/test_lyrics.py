@@ -8,7 +8,10 @@ from ytmusic_dl.lyrics import (
     _normalize_text,
     _parse_netease_result,
     _similarity,
+    build_candidate,
+    confidence_for_score,
     find_best_lyrics,
+    search_candidates,
     write_lyrics,
 )
 from ytmusic_dl.models import LyricsResult, Track
@@ -639,3 +642,99 @@ def test_parse_netease_cloudsearch_result() -> None:
     assert "sodagreen" in result.artist_name
     assert result.album_name == "冬 未了 (苏打绿版)"
     assert result.duration == 365.733
+
+def test_build_candidate_explains_strong_match() -> None:
+    """Explain why a strong candidate was accepted."""
+
+    candidate = build_candidate(
+        make_track(),
+        make_result(synced="[00:01.00] Test lyrics"),
+    )
+
+    assert candidate.accepted
+    assert candidate.confidence == "high"
+    assert round(candidate.score, 2) == 1.10
+
+    assert "title matches" in candidate.match_reasons
+    assert "artist matches" in candidate.match_reasons
+    assert "duration within 0.0s" in candidate.match_reasons
+
+    assert (
+        "synchronized lyrics available"
+        in candidate.match_reasons
+    )
+
+def test_build_candidate_rejects_artist_mismatch() -> None:
+    """Reject a candidate with a different artist."""
+
+    candidate = build_candidate(
+        make_track(),
+        make_result(artist="Other Artist", synced="lyrics"),
+    )
+
+    assert not candidate.accepted
+    assert "artist does not match" in (
+        candidate.rejection_reasons
+    )
+
+def test_build_candidate_rejects_duration_mismatch() -> None:
+    """Reject a candidate whose duration is clearly different."""
+
+    candidate = build_candidate(
+        make_track(),
+        make_result(duration=260, synced="lyrics"),
+    )
+
+    assert not candidate.accepted
+    assert any(
+        "duration differs" in reason
+        for reason in candidate.rejection_reasons
+    )
+
+def test_build_candidate_rejects_unrelated_title() -> None:
+    """Reject a candidate with a clearly different title."""
+
+    candidate = build_candidate(
+        make_track(),
+        make_result(
+            title="Completely Different Song",
+            synced="lyrics",
+        ),
+    )
+
+    assert not candidate.accepted
+    assert any(
+        "title similarity" in reason
+        for reason in candidate.rejection_reasons
+    )
+
+def test_confidence_for_score() -> None:
+    """Map scores to confidence labels."""
+
+    assert confidence_for_score(1.10) == "high"
+    assert confidence_for_score(0.80) == "medium"
+    assert confidence_for_score(0.50) == "low"
+
+def test_search_candidates_scores_every_result() -> None:
+    """Return one scored candidate per provider result."""
+
+    track = make_track()
+
+    results = [
+        make_result(synced="first"),
+        make_result(provider="netease", synced="second"),
+    ]
+
+    with patch(
+        "ytmusic_dl.lyrics.service.search_lyrics",
+        return_value=results,
+    ):
+        candidates = search_candidates(track)
+
+    assert len(candidates) == 2
+    assert all(candidate.accepted for candidate in candidates)
+
+    assert {
+        candidate.result.provider
+        for candidate in candidates
+    } == {"test", "netease"}
