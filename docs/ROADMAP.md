@@ -44,8 +44,9 @@ The application is organized into focused modules under `src/ytmusic_dl/`:
 
 At the time of this review:
 
-- 171 tests were collected.
-- 171 tests passed.
+- 175 tests were collected.
+- 175 tests passed.
+- GUI tests are skipped when PySide6 is not installed.
 - No tests depend on a local browser profile or usable YouTube cookies.
 - The README test status matches the suite.
 - CI runs the suite on every push to `main` and on pull requests.
@@ -144,16 +145,22 @@ At the time of this review:
 
 ### Phase 4: Native Desktop Application
 
-- [ ] Verify PySide6 compatibility with Python 3.14 on Fedora and macOS.
+- [x] Add a PySide6 entry point, optional `gui` dependency, and a main window skeleton.
+- [x] Verify PySide6 compatibility with Python 3.14 on macOS (PySide6 6.12.0).
+- [ ] Verify PySide6 compatibility with Python 3.14 on Fedora.
 - [ ] Create a PySide6 main window with:
   - Music Download tab
   - Lyrics Only tab
   - Settings tab
+
+  The three tabs exist; only the Settings tab is functional so far.
 - [ ] Run network and download work in background workers.
 - [ ] Add progress, logging, cancellation, and completion signals.
 - [ ] Show lyrics candidates with confidence, match reasons, and previews.
 - [ ] Add an audio-quality selector and source/output quality report.
 - [ ] Detect FFmpeg and Deno without relying exclusively on `PATH`.
+
+  Detection is implemented in `ytmusic_dl/gui/environment.py`; the download pipeline still resolves FFmpeg through `PATH`.
 - [ ] Test Fedora under Wayland and X11.
 - [ ] Test macOS terminal and Finder launches.
 

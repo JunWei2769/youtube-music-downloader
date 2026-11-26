@@ -1,0 +1,139 @@
+"""
+Purpose: Locate external tools for the desktop application.
+
+- FFmpeg and FFprobe discovery
+- Deno discovery
+- PATH-independent fallback locations
+
+Responsibility: Environment detection
+"""
+
+import os
+import shutil
+import subprocess
+from dataclasses import dataclass
+from pathlib import Path
+
+VERSION_ARGUMENTS = {
+    "ffmpeg": ("-version",),
+    "ffprobe": ("-version",),
+    "deno": ("--version",),
+}
+
+@dataclass(frozen=True)
+class ToolStatus:
+    """Location and version of an external tool."""
+
+    name: str
+    path: str | None = None
+    version: str | None = None
+
+    @property
+    def available(self) -> bool:
+        """Return whether the tool was found."""
+
+        return self.path is not None
+
+def _fallback_paths(name: str) -> list[Path]:
+    """Return common install locations outside PATH."""
+
+    home = Path.home()
+    executable = f"{name}.exe" if os.name == "nt" else name
+
+    if name == "deno":
+        paths = [
+            home / ".deno" / "bin" / executable,
+        ]
+    else:
+        paths = []
+
+    if os.name == "nt":
+        paths.extend(
+            [
+                Path("C:/ffmpeg/bin") / executable,
+                home / "scoop" / "shims" / executable,
+            ]
+        )
+    else:
+        paths.extend(
+            [
+                Path("/opt/homebrew/bin") / executable,
+                Path("/usr/local/bin") / executable,
+                Path("/usr/bin") / executable,
+                Path("/snap/bin") / executable,
+            ]
+        )
+
+    return paths
+
+def _read_version(
+    path: Path,
+    arguments: tuple[str, ...],
+) -> str | None:
+    """Run a tool's version command and return its first line."""
+
+    if not arguments:
+        return None
+
+    try:
+        result = subprocess.run(
+            [str(path), *arguments],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+    output = (result.stdout or result.stderr).strip()
+
+    if not output:
+        return None
+
+    return output.splitlines()[0]
+
+def find_tool(
+    name: str,
+    *,
+    extra_paths: tuple[Path, ...] = (),
+    version_arguments: tuple[str, ...] | None = None,
+) -> ToolStatus:
+    """Find a tool on PATH, in known locations, or explicitly."""
+
+    candidates: list[Path] = []
+
+    on_path = shutil.which(name)
+
+    if on_path:
+        candidates.append(Path(on_path))
+
+    candidates.extend(Path(path) for path in extra_paths)
+    candidates.extend(_fallback_paths(name))
+
+    arguments = (
+        VERSION_ARGUMENTS.get(name, ())
+        if version_arguments is None
+        else version_arguments
+    )
+
+    for candidate in candidates:
+        path = candidate.expanduser()
+
+        if not path.is_file() or not os.access(path, os.X_OK):
+            continue
+
+        return ToolStatus(
+            name=name,
+            path=str(path),
+            version=_read_version(path, arguments),
+        )
+
+    return ToolStatus(name=name)
+
+def detect_tools() -> dict[str, ToolStatus]:
+    """Detect the tools required by the application."""
+
+    return {
+        name: find_tool(name)
+        for name in ("ffmpeg", "ffprobe", "deno")
+    }

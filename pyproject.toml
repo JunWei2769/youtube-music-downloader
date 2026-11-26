@@ -25,6 +25,12 @@ dependencies = [
 
 [project.scripts]
 ytmusic-dl = "ytmusic_dl.cli:main"
+ytmusic-dl-gui = "ytmusic_dl.gui.app:main"
+
+[project.optional-dependencies]
+gui = [
+    "PySide6-Essentials>=6.12",
+]
 
 [build-system]
 requires = ["uv_build>=0.12.3,<0.13.0"]

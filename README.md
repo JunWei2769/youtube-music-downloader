@@ -21,6 +21,7 @@ A lightweight CLI tool for downloading audio from YouTube Music playlists and in
 - Support custom output directories
 - Support Unicode filenames
 - Simple download summary
+- Optional PySide6 desktop interface (preview)
 
 ## Requirements
 
@@ -463,6 +464,31 @@ ytmusic-dl \
   --no-thumbnail
 ```
 
+## Desktop Application (preview)
+
+The desktop interface is optional and requires PySide6. Install the GUI extra:
+
+```bash
+uv sync --extra gui
+```
+
+Run it:
+
+```bash
+uv run --extra gui ytmusic-dl-gui
+```
+
+For an installed CLI:
+
+```bash
+uv tool install ".[gui]"
+ytmusic-dl-gui
+```
+
+The preview has three tabs: **Music Download**, **Lyrics Only**, and **Settings**. Settings reports the detected FFmpeg, FFprobe, and Deno locations and versions, including installations outside `PATH`. Download and lyrics controls are being wired up next.
+
+PySide6 6.12 has been verified with Python 3.14 on macOS. Fedora testing is still pending.
+
 ## Troubleshooting
 
 ### `HTTP Error 403: Forbidden`
@@ -593,21 +619,24 @@ uv run pytest -v
 Current test status:
 
 ```text
-171 passed
+175 passed
 ```
+
+The GUI tests are skipped when PySide6 is not installed.
 
 The test suite covers:
 
 - Browser detection
 - CLI argument parsing
 - Audio downloading
-- MP3, Opus, FLAC, and WAV output configuration
+- MP3, Opus, FLAC, WAV, M4A, and source output configuration
 - Lyrics providers and matching
 - Lyrics confidence, match reasons, and rejection reasons
 - Lyrics-only search and download commands
 - Metadata embedding
 - Thumbnail embedding
 - Download pipeline behavior
+- Desktop window construction and external tool detection
 
 The pipeline tests do not depend on a real browser profile or usable YouTube cookies, so the suite runs the same way on any machine.
 
