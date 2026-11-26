@@ -320,6 +320,8 @@ ytmusic-dl lyrics download "https://music.youtube.com/watch?v=VIDEO_ID" --best
 
 Each candidate shows its provider, score, confidence (`high`, `medium`, `low`), match reasons, and rejection reasons. Every discovered candidate is scored; the best 10 are shown by default. `--best` only saves a candidate at or above `--min-confidence` (default `medium`); use `--select N` to choose a candidate manually.
 
+Provider diagnostics are hidden by default. Pass `--verbose` to see NetEase search and lyrics requests.
+
 Files are written to `downloads/lyrics/` by default as `<Artist> - <Title>.lrc`. Synchronized lyrics are preferred, with plain lyrics as a fallback. Existing files are not replaced unless you pass `--overwrite`.
 
 | Option                   | Description                                          |
@@ -332,6 +334,7 @@ Files are written to `downloads/lyrics/` by default as `<Artist> - <Title>.lrc`.
 | `--select N`             | Save candidate N from the search list                |
 | `--min-confidence LEVEL` | Minimum confidence for `--best`: `high`, `medium`, `low` |
 | `-o, --output DIR`       | Output directory. Default: `downloads/lyrics`        |
+| `-v, --verbose`          | Show provider diagnostics                            |
 | `--overwrite`            | Replace an existing lyrics file                      |
 
 ## Browser Cookies
@@ -527,7 +530,7 @@ uv run pytest -v
 Current test status:
 
 ```text
-108 passed
+112 passed
 ```
 
 The test suite covers:

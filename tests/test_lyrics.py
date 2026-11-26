@@ -16,7 +16,10 @@ from ytmusic_dl.lyrics import (
     search_candidates,
     write_lyrics,
 )
-from ytmusic_dl.lyrics.providers.netease import MAX_LYRICS_FETCHES
+from ytmusic_dl.lyrics.providers.netease import (
+    MAX_LYRICS_FETCHES,
+    MAX_SEARCH_TERMS,
+)
 from ytmusic_dl.models import LyricsResult, Track
 
 
@@ -964,3 +967,70 @@ def test_fetch_missing_lyrics_keeps_existing_content() -> None:
         hydrated = fetch_missing_lyrics(result)
 
     assert hydrated is result
+
+def test_build_netease_search_terms_strips_video_noise() -> None:
+    """Remove video and remaster noise from NetEase searches."""
+
+    track = Track(
+        playlist_index=1,
+        title=(
+            "Rick Astley - Never Gonna Give You Up "
+            "(Official Video) (4K Remaster)"
+        ),
+        artist="Rick Astley",
+        duration=213,
+    )
+
+    terms = _build_netease_search_terms(track)
+
+    assert "Rick Astley - Never Gonna Give You Up" in terms
+    assert "Never Gonna Give You Up" in terms
+
+    for term in terms:
+        lowered = term.lower()
+
+        assert "official" not in lowered
+        assert "4k" not in lowered
+        assert "()" not in term
+
+def test_build_netease_search_terms_keeps_bilingual_brackets() -> None:
+    """Keep meaningful bracket content while removing noise."""
+
+    track = Track(
+        playlist_index=1,
+        title=(
+            "蘇打綠 sodagreen"
+            "【博物館 The Museum】"
+            "（蘇打綠版）"
+            "Official Music Video"
+        ),
+        artist="sodagreen",
+        duration=276,
+    )
+
+    terms = _build_netease_search_terms(track)
+
+    assert "博物館 The Museum" in terms
+
+    for term in terms:
+        assert "official" not in term.lower()
+
+def test_build_netease_search_terms_caps_requests() -> None:
+    """Never build more than the request cap."""
+
+    track = Track(
+        playlist_index=1,
+        title="A - B (C) [D] 【E】 F (G)",
+        artist="A",
+    )
+
+    terms = _build_netease_search_terms(track)
+
+    assert 0 < len(terms) <= MAX_SEARCH_TERMS
+
+def test_build_netease_search_terms_empty_title() -> None:
+    """Return no search terms for an empty title."""
+
+    track = Track(playlist_index=1, title="   ")
+
+    assert _build_netease_search_terms(track) == []

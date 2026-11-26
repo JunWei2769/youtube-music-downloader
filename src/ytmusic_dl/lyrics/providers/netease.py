@@ -11,13 +11,73 @@ from ytmusic_dl.lyrics.constants import (
     NETEASE_SEARCH_URL,
 )
 from ytmusic_dl.lyrics.normalize import _normalize_text
+from ytmusic_dl.log import get_logger
 from ytmusic_dl.lyrics.scoring import (
     _match_score,
     _passes_basic_checks,
 )
 from ytmusic_dl.models import LyricsRequest, LyricsResult
 
+logger = get_logger("lyrics.netease")
+
 MAX_LYRICS_FETCHES = 5
+MAX_SEARCH_TERMS = 6
+
+BRACKET_PATTERN = re.compile(
+    r"[\(\（\[【]([^\)\）\]】]*)[\)\）\]】]"
+)
+
+NOISE_PATTERN = re.compile(
+    r"\b(?:"
+    r"official\s+music\s+video"
+    r"|official\s+video"
+    r"|music\s+video"
+    r"|official\s+audio"
+    r"|lyric\s+video"
+    r"|lyrics?"
+    r"|visuali[sz]er"
+    r"|performance\s+video"
+    r"|audio\s+only"
+    r"|mv|m/v"
+    r"|hd|hq|4k|8k"
+    r"|1080p|2160p"
+    r"|remaster(?:ed)?(?:\s+\d{4})?"
+    r"|explicit"
+    r")\b",
+    re.IGNORECASE,
+)
+
+def _clean_search_title(value: str) -> str:
+    """Remove video and remaster noise from a search title."""
+
+    def replace_bracket(match: re.Match[str]) -> str:
+        content = match.group(1)
+
+        if NOISE_PATTERN.search(content):
+            return " "
+
+        return match.group(0)
+
+    cleaned = BRACKET_PATTERN.sub(
+        replace_bracket,
+        value,
+    )
+
+    cleaned = NOISE_PATTERN.sub(" ", cleaned)
+
+    # Drop brackets that became empty.
+    cleaned = re.sub(
+        r"[\(\（\[【]\s*[\)\）\]】]",
+        " ",
+        cleaned,
+    )
+
+    cleaned = re.sub(r"\s+", " ", cleaned)
+
+    cleaned = cleaned.strip(" -–—|·.,")
+
+    # Never reduce a title to nothing.
+    return cleaned or value.strip()
 
 class NetEaseSearchUnavailable(Exception):
     """Raised when the NetEase search API is temporarily unavailable."""
@@ -86,22 +146,39 @@ def _build_netease_search_terms(
     def add_term(value: str) -> None:
         value = value.strip()
 
-        if value:
-            terms.append(value)
+        if not value:
+            return
 
-            normalized = _normalize_text(value)
+        terms.append(value)
 
-            if normalized:
-                terms.append(normalized)
+        normalized = _normalize_text(value)
 
-    # ---------------------------------------------------------
-    # 1. Original title
-    # ---------------------------------------------------------
-
-    add_term(title)
+        if normalized:
+            terms.append(normalized)
 
     # ---------------------------------------------------------
-    # 2. Extract content inside YouTube-style brackets.
+    # 1. Title with video/remaster noise removed.
+    # ---------------------------------------------------------
+
+    search_title = _clean_search_title(title)
+
+    add_term(search_title)
+
+    # ---------------------------------------------------------
+    # 2. Song portion of an "Artist - Song" title.
+    # ---------------------------------------------------------
+
+    title_parts = re.split(
+        r"\s+[-–—]\s+",
+        search_title,
+        maxsplit=1,
+    )
+
+    if len(title_parts) == 2:
+        add_term(title_parts[1])
+
+    # ---------------------------------------------------------
+    # 3. Content inside YouTube-style brackets.
     #
     # Example:
     # 蘇打綠 sodagreen【博物館 The Museum】（蘇打綠版）...
@@ -109,57 +186,14 @@ def _build_netease_search_terms(
     # -> 博物館 The Museum
     # ---------------------------------------------------------
 
-    bracket_titles = re.findall(
-        r"【([^】]+)】",
-        title,
-    )
-
-    for bracket_title in bracket_titles:
-        add_term(bracket_title)
-
-    # Also support normal parentheses/brackets when useful.
-    bracket_titles = re.findall(
-        r"\[([^\]]+)\]",
-        title,
-    )
-
-    for bracket_title in bracket_titles:
-        add_term(bracket_title)
+    for pattern in (r"【([^】]+)】", r"\[([^\]]+)\]"):
+        for bracket_title in re.findall(pattern, title):
+            add_term(
+                _clean_search_title(bracket_title)
+            )
 
     # ---------------------------------------------------------
-    # 3. Remove common YouTube metadata.
-    # ---------------------------------------------------------
-
-    search_title = re.sub(
-        r"\b"
-        r"(official\s+music\s+video|"
-        r"official\s+video|"
-        r"music\s+video)"
-        r"\b",
-        "",
-        title,
-        flags=re.IGNORECASE,
-    )
-
-    # Remove common version/live suffixes.
-    search_title = re.sub(
-        r"\s*[\(\（]"
-        r".*?"
-        r"(?:live|现场|演唱会|version|版)"
-        r".*?"
-        r"[\)\）]",
-        "",
-        search_title,
-        flags=re.IGNORECASE,
-    )
-
-    search_title = search_title.strip()
-
-    if search_title:
-        add_term(search_title)
-
-    # ---------------------------------------------------------
-    # 4. Extract Chinese-only title.
+    # 4. Chinese-only title.
     # ---------------------------------------------------------
 
     chinese_title = re.sub(
@@ -168,11 +202,10 @@ def _build_netease_search_terms(
         search_title,
     )
 
-    if chinese_title:
-        add_term(chinese_title)
+    add_term(chinese_title)
 
     # ---------------------------------------------------------
-    # 5. Extract English/Latin title.
+    # 5. English/Latin title.
     # ---------------------------------------------------------
 
     english_parts = re.findall(
@@ -186,20 +219,22 @@ def _build_netease_search_terms(
         if part.strip()
     ).strip()
 
-    if english_title:
-        add_term(english_title)
+    add_term(english_title)
 
     # ---------------------------------------------------------
-    # Preserve order and remove duplicates.
+    # Preserve order, remove duplicates, and cap the number of
+    # requests made against NetEase.
     # ---------------------------------------------------------
 
-    return list(
+    unique_terms = list(
         dict.fromkeys(
             term
             for term in terms
             if term
         )
     )
+
+    return unique_terms[:MAX_SEARCH_TERMS]
 
 class NetEaseProvider:
     """NetEase Cloud Music lyrics provider."""
@@ -345,9 +380,10 @@ class NetEaseProvider:
                 },
             )
 
-            print(
-                f"[NetEase] Search: {search_term!r} "
-                f"→ HTTP {response.status_code}"
+            logger.debug(
+                "[NetEase] Search: %r → HTTP %s",
+                search_term,
+                response.status_code,
             )
 
             response.raise_for_status()
@@ -355,25 +391,27 @@ class NetEaseProvider:
             data = response.json()
 
         except (httpx.HTTPError, ValueError) as error:
-            print(
-                f"[NetEase] Search failed for "
-                f"{search_term!r}: {error}"
+            logger.warning(
+                "[NetEase] Search failed for %r: %s",
+                search_term,
+                error,
             )
             return []
 
         if not isinstance(data, dict):
-            print(
-                f"[NetEase] Invalid response for "
-                f"{search_term!r}"
+            logger.warning(
+                "[NetEase] Invalid response for %r",
+                search_term,
             )
             return []
 
         code = data.get("code")
 
         if code != 200:
-            print(
-                f"[NetEase] API error for "
-                f"{search_term!r}: code={code}"
+            logger.warning(
+                "[NetEase] API error for %r: code=%s",
+                search_term,
+                code,
             )
             raise NetEaseSearchUnavailable(
                 f"NetEase search unavailable (code {code})"
@@ -382,24 +420,25 @@ class NetEaseProvider:
         result = data.get("result")
 
         if not isinstance(result, dict):
-            print(
-                f"[NetEase] No result object for "
-                f"{search_term!r}"
+            logger.warning(
+                "[NetEase] No result object for %r",
+                search_term,
             )
             return []
 
         songs = result.get("songs", [])
 
         if not isinstance(songs, list):
-            print(
-                f"[NetEase] Invalid songs list for "
-                f"{search_term!r}"
+            logger.warning(
+                "[NetEase] Invalid songs list for %r",
+                search_term,
             )
             return []
 
-        print(
-            f"[NetEase] Search returned "
-            f"{len(songs)} songs for {search_term!r}"
+        logger.debug(
+            "[NetEase] Search returned %d songs for %r",
+            len(songs),
+            search_term,
         )
 
         return [
@@ -423,10 +462,10 @@ class NetEaseProvider:
                 },
             )
 
-            print(
-                f"[NetEase] Lyrics request: "
-                f"id={provider_id} "
-                f"→ HTTP {response.status_code}"
+            logger.debug(
+                "[NetEase] Lyrics request: id=%s → HTTP %s",
+                provider_id,
+                response.status_code,
             )
 
             response.raise_for_status()
@@ -434,9 +473,10 @@ class NetEaseProvider:
             data = response.json()
 
         except (httpx.HTTPError, ValueError) as error:
-            print(
-                f"[NetEase] Lyrics request failed "
-                f"for id={provider_id}: {error}"
+            logger.warning(
+                "[NetEase] Lyrics request failed for id=%s: %s",
+                provider_id,
+                error,
             )
             return None
 
@@ -445,15 +485,15 @@ class NetEaseProvider:
         lyrics = lyric_data.get("lyric")
 
         if not lyrics:
-            print(
-                f"[NetEase] No lyrics returned "
-                f"for id={provider_id}"
+            logger.debug(
+                "[NetEase] No lyrics returned for id=%s",
+                provider_id,
             )
             return None
 
-        print(
-            f"[NetEase] Lyrics found "
-            f"for id={provider_id}"
+        logger.debug(
+            "[NetEase] Lyrics found for id=%s",
+            provider_id,
         )
 
         return str(lyrics)

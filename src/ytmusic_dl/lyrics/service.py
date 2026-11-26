@@ -15,12 +15,15 @@ from ytmusic_dl.lyrics.scoring import (
     _title_similarity,
     confidence_for_score,
 )
+from ytmusic_dl.log import get_logger
 from ytmusic_dl.models import (
     LyricsCandidate,
     LyricsProvider,
     LyricsRequest,
     LyricsResult,
 )
+
+logger = get_logger("lyrics")
 
 PROVIDERS: tuple[LyricsProvider, ...] = (
     LRCLIBProvider(),
@@ -136,9 +139,10 @@ def search_lyrics(request: LyricsRequest) -> list[LyricsResult]:
                 provider.search(request)
             )
         except Exception as error:
-            print(
-                f"Warning: {provider.name} lyrics "
-                f"provider failed: {error}"
+            logger.warning(
+                "Lyrics provider %s failed: %s",
+                provider.name,
+                error,
             )
 
     return results

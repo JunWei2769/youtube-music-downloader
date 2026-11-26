@@ -17,6 +17,7 @@ from ytmusic_dl.lyrics import (
     search_candidates,
     write_lyrics,
 )
+from ytmusic_dl.log import configure_logging
 from ytmusic_dl.models import (
     LyricsCandidate,
     LyricsQuery,
@@ -69,6 +70,14 @@ def _add_query_arguments(
         ),
     )
 
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        default=argparse.SUPPRESS,
+        help="Show provider diagnostics",
+    )
+
 def build_lyrics_parser() -> argparse.ArgumentParser:
     """Build the parser for `ytmusic-dl lyrics`."""
 
@@ -82,6 +91,13 @@ def build_lyrics_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(
         dest="action",
         required=True,
+    )
+
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Show provider diagnostics",
     )
 
     search_parser = subparsers.add_parser(
@@ -440,6 +456,8 @@ def run_lyrics_command(
 
     parser = build_lyrics_parser()
     args = parser.parse_args(argv)
+
+    configure_logging(args.verbose)
 
     if args.action == "search":
         return _run_search(args, parser)

@@ -12,6 +12,7 @@ from pathlib import Path
 from ytmusic_dl.browser import find_browser, list_browsers
 from ytmusic_dl.cli_lyrics import run_lyrics_command
 from ytmusic_dl.downloader import extract_playlist, extract_single_track
+from ytmusic_dl.log import configure_logging
 from ytmusic_dl.pipeline import process_playlist
 
 
@@ -88,6 +89,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="List detected browsers and YouTube cookie availability",
     )
 
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Show lyrics provider diagnostics",
+    )
+
     return parser
 
 def main() -> None:
@@ -98,6 +106,8 @@ def main() -> None:
 
     parser = build_parser()
     args = parser.parse_args()
+
+    configure_logging(args.verbose)
 
     if args.list_browsers:
         print("=" * 60)
