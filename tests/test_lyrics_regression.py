@@ -8,8 +8,6 @@ issues that the remaining Phase 2 work must fix.
 
 from unittest.mock import patch
 
-import pytest
-
 from ytmusic_dl.lyrics import build_candidate, search_candidates
 from ytmusic_dl.models import LyricsResult, LyricsQuery
 
@@ -68,6 +66,23 @@ def test_netease_alias_list_does_not_lower_confidence() -> None:
     assert candidate.accepted
     assert candidate.confidence == "high"
     assert candidate.score > 0.90
+
+def test_clean_title_matches_noisy_youtube_title() -> None:
+    """A clean provider title must match a noisy YouTube title."""
+
+    candidate = build_candidate(
+        RICK_QUERY,
+        make_result(
+            provider="netease",
+            title="Never Gonna Give You Up",
+            artist=RICK_ALIASES,
+            album="Whenever You Need Somebody",
+            duration=213.6,
+        ),
+    )
+
+    assert candidate.accepted
+    assert candidate.confidence == "high"
 
 def test_lrclib_video_title_as_album_is_not_rejected() -> None:
     """LRCLIB echoing the video title as album must stay acceptable."""
@@ -136,10 +151,6 @@ def test_missing_duration_stays_medium_confidence() -> None:
     assert candidate.confidence == "medium"
     assert "duration not compared" in candidate.match_reasons
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="candidate deduplication is not implemented yet",
-)
 def test_same_recording_under_two_albums_is_deduplicated() -> None:
     """One recording listed under two album names should appear once."""
 
@@ -171,3 +182,127 @@ def test_same_recording_under_two_albums_is_deduplicated() -> None:
         ]
 
     assert len(candidates) == 1
+
+def test_deduplication_prefers_matching_album() -> None:
+    """Keep the duplicate whose album matches the query."""
+
+    query = LyricsQuery(
+        title="Never Gonna Give You Up",
+        artist="Rick Astley",
+        album="Whenever You Need Somebody",
+        duration=213,
+    )
+
+    results = [
+        make_result(
+            provider="netease",
+            title="Never Gonna Give You Up (Remastered 2022)",
+            artist=RICK_ALIASES,
+            album="Never",
+            duration=213.1,
+        ),
+        make_result(
+            provider="netease",
+            title="Never Gonna Give You Up (Remastered 2022)",
+            artist=RICK_ALIASES,
+            album="Whenever You Need Somebody",
+            duration=213.1,
+        ),
+    ]
+
+    with patch(
+        "ytmusic_dl.lyrics.service.search_lyrics",
+        return_value=results,
+    ):
+        candidates = search_candidates(query)
+
+    assert len(candidates) == 1
+    assert candidates[0].result.album_name == (
+        "Whenever You Need Somebody"
+    )
+
+def test_deduplication_keeps_cross_provider_copies() -> None:
+    """Do not collapse copies from different providers."""
+
+    results = [
+        make_result(
+            provider="lrclib",
+            title="Never Gonna Give You Up (Remastered 2022)",
+            artist=RICK_ALIASES,
+            album="Whenever You Need Somebody",
+            duration=213.1,
+        ),
+        make_result(
+            provider="netease",
+            title="Never Gonna Give You Up (Remastered 2022)",
+            artist=RICK_ALIASES,
+            album="Whenever You Need Somebody",
+            duration=213.1,
+        ),
+    ]
+
+    with patch(
+        "ytmusic_dl.lyrics.service.search_lyrics",
+        return_value=results,
+    ):
+        candidates = search_candidates(RICK_QUERY)
+
+    assert len(candidates) == 2
+
+def test_deduplication_keeps_different_durations() -> None:
+    """Keep recordings that differ clearly in length."""
+
+    results = [
+        make_result(
+            provider="netease",
+            title="Never Gonna Give You Up",
+            artist=RICK_ALIASES,
+            album="Whenever You Need Somebody",
+            duration=213,
+        ),
+        make_result(
+            provider="netease",
+            title="Never Gonna Give You Up",
+            artist=RICK_ALIASES,
+            album="Whenever You Need Somebody",
+            duration=260,
+        ),
+    ]
+
+    with patch(
+        "ytmusic_dl.lyrics.service.search_lyrics",
+        return_value=results,
+    ):
+        candidates = search_candidates(RICK_QUERY)
+
+    assert len(candidates) == 2
+
+def test_deduplication_prefers_candidate_with_lyrics() -> None:
+    """Keep the duplicate that actually has lyrics content."""
+
+    results = [
+        make_result(
+            provider="netease",
+            title="Never Gonna Give You Up (Remastered 2022)",
+            artist=RICK_ALIASES,
+            album="Never",
+            duration=213.1,
+            synced=None,
+        ),
+        make_result(
+            provider="netease",
+            title="Never Gonna Give You Up (Remastered 2022)",
+            artist=RICK_ALIASES,
+            album="Never",
+            duration=213.1,
+        ),
+    ]
+
+    with patch(
+        "ytmusic_dl.lyrics.service.search_lyrics",
+        return_value=results,
+    ):
+        candidates = search_candidates(RICK_QUERY)
+
+    assert len(candidates) == 1
+    assert candidates[0].result.synced_lyrics is not None

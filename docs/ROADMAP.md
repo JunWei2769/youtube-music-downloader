@@ -44,8 +44,8 @@ The application is organized into focused modules under `src/ytmusic_dl/`:
 
 At the time of this review:
 
-- 117 tests were collected.
-- 116 tests passed, with 1 expected failure for deduplication, which is not implemented yet.
+- 122 tests were collected.
+- 122 tests passed.
 - No tests depend on a local browser profile or usable YouTube cookies.
 - The README test status matches the suite.
 - CI runs the suite on every push to `main` and on pull requests.
@@ -119,12 +119,13 @@ At the time of this review:
     - LRCLIB sometimes repeats the video title in the album field, so album comparison cannot be a strict requirement.
     - A correct match with no known duration still reaches `medium` confidence.
     - NetEase artist fields list many aliases, which depressed artist similarity even when the canonical name matched (`Rick Astley` scored 0.20). (Fixed: similarity now compares against the shorter artist list, so an alias match scores 1.0.)
-    - NetEase can return the same recording under different album names, so cross-candidate deduplication is needed.
+    - NetEase can return the same recording under different album names, so cross-candidate deduplication is needed. (Fixed for exact duplicates: same provider, title, artist, and duration collapse, preferring lyrics content and a matching album.)
 - [x] Use aggressive title normalization for search only, not as sole proof of a correct match.
 - [ ] Include album, artist, title, duration, and version compatibility in scoring.
 - [ ] Penalize studio/live/acoustic/remix/cover/remaster mismatches.
 - [x] Keep multiple NetEase candidates instead of returning the first accepted result.
 - [ ] Deduplicate and compare candidates across providers.
+  - Same-provider duplicates with identical title, artist, and duration now collapse. Cross-edition copies (original versus remaster) and cross-provider copies are still kept.
 - [ ] Add confidence thresholds:
   - High confidence: automatic selection is allowed.
   - Medium confidence: require explicit confirmation.

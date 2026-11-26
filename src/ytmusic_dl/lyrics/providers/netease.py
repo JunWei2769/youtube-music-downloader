@@ -10,7 +10,10 @@ from ytmusic_dl.lyrics.constants import (
     NETEASE_LYRICS_URL,
     NETEASE_SEARCH_URL,
 )
-from ytmusic_dl.lyrics.normalize import _normalize_text
+from ytmusic_dl.lyrics.normalize import (
+    _normalize_text,
+    _strip_title_noise,
+)
 from ytmusic_dl.log import get_logger
 from ytmusic_dl.lyrics.scoring import (
     _match_score,
@@ -22,62 +25,6 @@ logger = get_logger("lyrics.netease")
 
 MAX_LYRICS_FETCHES = 5
 MAX_SEARCH_TERMS = 6
-
-BRACKET_PATTERN = re.compile(
-    r"[\(\（\[【]([^\)\）\]】]*)[\)\）\]】]"
-)
-
-NOISE_PATTERN = re.compile(
-    r"\b(?:"
-    r"official\s+music\s+video"
-    r"|official\s+video"
-    r"|music\s+video"
-    r"|official\s+audio"
-    r"|lyric\s+video"
-    r"|lyrics?"
-    r"|visuali[sz]er"
-    r"|performance\s+video"
-    r"|audio\s+only"
-    r"|mv|m/v"
-    r"|hd|hq|4k|8k"
-    r"|1080p|2160p"
-    r"|remaster(?:ed)?(?:\s+\d{4})?"
-    r"|explicit"
-    r")\b",
-    re.IGNORECASE,
-)
-
-def _clean_search_title(value: str) -> str:
-    """Remove video and remaster noise from a search title."""
-
-    def replace_bracket(match: re.Match[str]) -> str:
-        content = match.group(1)
-
-        if NOISE_PATTERN.search(content):
-            return " "
-
-        return match.group(0)
-
-    cleaned = BRACKET_PATTERN.sub(
-        replace_bracket,
-        value,
-    )
-
-    cleaned = NOISE_PATTERN.sub(" ", cleaned)
-
-    # Drop brackets that became empty.
-    cleaned = re.sub(
-        r"[\(\（\[【]\s*[\)\）\]】]",
-        " ",
-        cleaned,
-    )
-
-    cleaned = re.sub(r"\s+", " ", cleaned)
-
-    cleaned = cleaned.strip(" -–—|·.,")
-
-    # Never reduce a title to nothing.
-    return cleaned or value.strip()
 
 class NetEaseSearchUnavailable(Exception):
     """Raised when the NetEase search API is temporarily unavailable."""
@@ -160,7 +107,7 @@ def _build_netease_search_terms(
     # 1. Title with video/remaster noise removed.
     # ---------------------------------------------------------
 
-    search_title = _clean_search_title(title)
+    search_title = _strip_title_noise(title)
 
     add_term(search_title)
 
@@ -189,7 +136,7 @@ def _build_netease_search_terms(
     for pattern in (r"【([^】]+)】", r"\[([^\]]+)\]"):
         for bracket_title in re.findall(pattern, title):
             add_term(
-                _clean_search_title(bracket_title)
+                _strip_title_noise(bracket_title)
             )
 
     # ---------------------------------------------------------

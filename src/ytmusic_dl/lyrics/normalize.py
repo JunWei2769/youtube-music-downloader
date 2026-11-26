@@ -7,6 +7,62 @@ from opencc import OpenCC
 
 _OPENCC = OpenCC("t2s")
 
+BRACKET_PATTERN = re.compile(
+    r"[\(\（\[【]([^\)\）\]】]*)[\)\）\]】]"
+)
+
+NOISE_PATTERN = re.compile(
+    r"\b(?:"
+    r"official\s+music\s+video"
+    r"|official\s+video"
+    r"|music\s+video"
+    r"|official\s+audio"
+    r"|lyric\s+video"
+    r"|lyrics?"
+    r"|visuali[sz]er"
+    r"|performance\s+video"
+    r"|audio\s+only"
+    r"|mv|m/v"
+    r"|hd|hq|4k|8k"
+    r"|1080p|2160p"
+    r"|remaster(?:ed)?(?:\s+\d{4})?"
+    r"|explicit"
+    r")\b",
+    re.IGNORECASE,
+)
+
+def _strip_title_noise(value: str) -> str:
+    """Remove video and remaster noise from a title."""
+
+    def replace_bracket(match: re.Match[str]) -> str:
+        content = match.group(1)
+
+        if NOISE_PATTERN.search(content):
+            return " "
+
+        return match.group(0)
+
+    cleaned = BRACKET_PATTERN.sub(
+        replace_bracket,
+        value,
+    )
+
+    cleaned = NOISE_PATTERN.sub(" ", cleaned)
+
+    # Drop brackets that became empty.
+    cleaned = re.sub(
+        r"[\(\（\[【]\s*[\)\）\]】]",
+        " ",
+        cleaned,
+    )
+
+    cleaned = re.sub(r"\s+", " ", cleaned)
+
+    cleaned = cleaned.strip(" -–—|·.,")
+
+    # Never reduce a title to nothing.
+    return cleaned or value.strip()
+
 def _normalize_text(value: str | None) -> str:
     """Normalize text for lyrics matching."""
     if not value:
@@ -66,6 +122,15 @@ def _build_title_variants(title: str) -> list[str]:
     if simplified:
         variants.append(simplified)
         variants.append(_normalize_text(simplified))
+
+    # Strip video and remaster noise so a clean provider title can
+    # match a noisy YouTube title. This only adds a variant; other
+    # signals still have to corroborate the match.
+    noise_free = _strip_title_noise(title)
+
+    if noise_free and noise_free != title:
+        variants.append(noise_free)
+        variants.append(_normalize_text(noise_free))
 
     # Extract the title portion before the " - " separator.
     title_part = re.split(

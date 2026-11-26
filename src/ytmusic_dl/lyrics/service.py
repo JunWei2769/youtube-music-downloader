@@ -6,6 +6,7 @@ from ytmusic_dl.lyrics.providers import (
     LRCLIBProvider,
     NetEaseProvider,
 )
+from ytmusic_dl.lyrics.normalize import _normalize_text
 from ytmusic_dl.lyrics.scoring import (
     MIN_TITLE_SIMILARITY,
     _artist_matches,
@@ -24,6 +25,8 @@ from ytmusic_dl.models import (
 )
 
 logger = get_logger("lyrics")
+
+DEDUPE_DURATION_TOLERANCE = 2.0
 
 PROVIDERS: tuple[LyricsProvider, ...] = (
     LRCLIBProvider(),
@@ -152,10 +155,106 @@ def search_candidates(
 ) -> list[LyricsCandidate]:
     """Search providers and score every returned result."""
 
-    return [
+    candidates = [
         build_candidate(request, result)
         for result in search_lyrics(request)
     ]
+
+    return _dedupe_candidates(request, candidates)
+
+def _is_duplicate(
+    first: LyricsResult,
+    second: LyricsResult,
+) -> bool:
+    """Return whether two results are the same recording."""
+
+    if first.provider != second.provider:
+        return False
+
+    if (
+        _normalize_text(first.track_name)
+        != _normalize_text(second.track_name)
+    ):
+        return False
+
+    if (
+        _normalize_text(first.artist_name)
+        != _normalize_text(second.artist_name)
+    ):
+        return False
+
+    if first.duration is None or second.duration is None:
+        return first.duration is None and second.duration is None
+
+    return (
+        abs(first.duration - second.duration)
+        <= DEDUPE_DURATION_TOLERANCE
+    )
+
+def _album_rank(
+    request: LyricsRequest,
+    album: str | None,
+) -> int:
+    """Rank how well a candidate album answers the query album."""
+
+    if not request.album:
+        return 0
+
+    if not album:
+        return 1
+
+    if (
+        _normalize_text(request.album)
+        == _normalize_text(album)
+    ):
+        return 2
+
+    return 0
+
+def _dedupe_rank(
+    request: LyricsRequest,
+    candidate: LyricsCandidate,
+) -> tuple[int, int]:
+    """Rank which duplicate is more useful to keep."""
+
+    result = candidate.result
+
+    has_lyrics = int(
+        bool(result.synced_lyrics or result.plain_lyrics)
+    )
+
+    return (
+        has_lyrics,
+        _album_rank(request, result.album_name),
+    )
+
+def _dedupe_candidates(
+    request: LyricsRequest,
+    candidates: list[LyricsCandidate],
+) -> list[LyricsCandidate]:
+    """Collapse duplicate recordings from the same provider."""
+
+    deduped: list[LyricsCandidate] = []
+
+    for candidate in candidates:
+        for index, existing in enumerate(deduped):
+            if not _is_duplicate(
+                existing.result,
+                candidate.result,
+            ):
+                continue
+
+            if (
+                _dedupe_rank(request, candidate)
+                > _dedupe_rank(request, existing)
+            ):
+                deduped[index] = candidate
+
+            break
+        else:
+            deduped.append(candidate)
+
+    return deduped
 
 def find_best_lyrics(
     request: LyricsRequest,
