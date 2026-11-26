@@ -500,6 +500,10 @@ You can also run the lyrics-specific tests:
 uv run pytest tests/test_lyrics.py -v
 ```
 
+## Roadmap
+
+See [docs/ROADMAP.md](docs/ROADMAP.md) for the current project review, known issues, and planned improvements.
+
 ## Development
 
 Run directly from the repository:
