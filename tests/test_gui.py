@@ -49,6 +49,17 @@ def qt_app():
 
     yield app
 
+@pytest.fixture(autouse=True)
+def _cleanup_widgets(qt_app):
+    """Delete closed widgets while the application still exists."""
+
+    yield
+
+    for widget in QApplication.allWidgets():
+        widget.deleteLater()
+
+    qt_app.processEvents()
+
 @pytest.fixture
 def app_settings(tmp_path):
     """Provide an isolated QSettings store."""
