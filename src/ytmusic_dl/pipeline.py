@@ -11,6 +11,7 @@ Responsibility: Application workflow
 
 from pathlib import Path
 
+from ytmusic_dl.audio import is_lossless
 from ytmusic_dl.browser import (
     BrowserProfile,
     find_browser_with_cookies,
@@ -24,10 +25,70 @@ from ytmusic_dl.lyrics import (
     write_lyrics,
 )
 from ytmusic_dl.metadata import write_metadata
-from ytmusic_dl.models import PlaylistResult, Track, TrackResult
+from ytmusic_dl.models import (
+    DownloadInfo,
+    PlaylistResult,
+    Track,
+    TrackResult,
+)
 from ytmusic_dl.thumbnail import download_thumbnail, embed_thumbnail
 from ytmusic_dl.utils import build_playlist_directory_name, ensure_directory
 
+
+def _describe_stream(
+    codec: str | None,
+    bitrate: float | None,
+    extension: str | None = None,
+) -> str:
+    """Describe a codec, bitrate, and container for the report."""
+
+    parts = [codec or "unknown"]
+
+    if bitrate is not None:
+        parts.append(f"{bitrate:.0f} kbps")
+
+    if extension:
+        parts.append(f"({extension})")
+
+    return " ".join(parts)
+
+def _print_audio_report(
+    download: DownloadInfo,
+    audio_format: str,
+) -> None:
+    """Report source and output audio details."""
+
+    if download.mode == "skip":
+        return
+
+    print(
+        "Source: "
+        + _describe_stream(
+            download.source_codec,
+            download.source_bitrate,
+            download.source_ext,
+        )
+    )
+
+    print(
+        "Output: "
+        + _describe_stream(
+            download.output_codec,
+            download.output_bitrate,
+        )
+    )
+
+    print(f"Mode:   {download.mode}")
+
+    if (
+        audio_format in {"flac", "wav"}
+        and download.source_codec
+        and not is_lossless(download.source_codec)
+    ):
+        print(
+            f"Warning: {audio_format.upper()} cannot restore quality "
+            f"from a lossy source ({download.source_codec})."
+        )
 
 def process_track(
     track: Track,
@@ -45,18 +106,25 @@ def process_track(
     lyrics_written = False
 
     # download audio
-    audio_path = download_track(
+    download = download_track(
         track,
         output_directory,
         audio_format=audio_format,
         browser=browser,
     )
 
+    audio_path = download.path
+
+    _print_audio_report(download, audio_format)
+
     # write metadata
-    write_metadata(
-        audio_path,
-        track,
-    )
+    try:
+        write_metadata(
+            audio_path,
+            track,
+        )
+    except Exception as error:
+        print(f"Warning: Could not write metadata: {error}")
 
     # download and embed thumbnail
     if download_thumbnails:

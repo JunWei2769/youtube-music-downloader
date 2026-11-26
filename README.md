@@ -5,12 +5,14 @@ A lightweight CLI tool for downloading audio from YouTube Music playlists and in
 ## Features
 
 - Download YouTube Music playlists and individual tracks
-- MP3, Opus, FLAC, or WAV output
+- MP3, Opus, FLAC, WAV, or M4A output
+- Source mode that keeps the original stream without re-encoding
 - Embed title, artist, album, and track number
 - Embed YouTube thumbnails as album artwork
+- Report source and output codec, bitrate, and copy/transcode mode
 - Search and save lyrics as `.lrc` files
 - Multiple lyrics providers with automatic fallback
-- Validate lyrics matches using title, artist, and duration
+- Validate lyrics matches using title, artist, album, and duration
 - Prefer synchronized lyrics when available
 - Automatically skip existing tracks
 - Automatic browser cookie detection
@@ -176,14 +178,16 @@ The downloader automatically looks for a browser profile containing usable YouTu
 
 ### Audio Formats
 
-The downloader supports four output formats:
+The downloader supports five output formats plus a source-preserving mode:
 
 - MP3
 - Opus
 - FLAC
 - WAV
+- M4A
+- Source (no re-encoding)
 
-All formats are processed through FFmpeg and receive the same metadata and thumbnail processing pipeline supported by the application.
+Converted formats are processed through FFmpeg and receive the same metadata and thumbnail pipeline. Source mode keeps the original stream as `yt-dlp` downloaded it.
 
 ### Download as MP3
 
@@ -225,7 +229,33 @@ ytmusic-dl \
 
 WAV output is generated through FFmpeg audio extraction and supports embedded ID3 metadata and album artwork.
 
-> Note: Converting YouTube audio to FLAC or WAV does not increase the original source quality. These formats preserve the decoded audio without additional lossy compression, but they cannot restore information that was not present in the original YouTube stream.
+> Note: Converting YouTube audio to FLAC or WAV does not increase the original source quality. These formats preserve the decoded audio without additional lossy compression, but they cannot restore information that was not present in the original YouTube stream. The downloader prints a warning when FLAC or WAV is requested from a lossy source.
+
+### Download as M4A
+
+```bash
+ytmusic-dl \
+  "PLAYLIST_URL" \
+  --audio-format m4a
+```
+
+M4A output uses AAC at 256 kbps and supports embedded metadata and album artwork.
+
+### Download as source (no re-encoding)
+
+```bash
+ytmusic-dl \
+  "PLAYLIST_URL" \
+  --audio-format source
+```
+
+Source mode keeps the best original audio stream in its native container, usually M4A/AAC or WebM/Opus, without re-encoding. Metadata and artwork are embedded when the container supports it (M4A); WebM files are kept as downloaded with a warning.
+
+Conversion quality is fixed per format:
+
+- MP3 — V0 variable bitrate
+- Opus — 160 kbps
+- M4A — 256 kbps AAC
 
 ### Custom output directory
 
@@ -413,7 +443,7 @@ This command is useful for troubleshooting browser profile and cookie detection 
 | Option                  | Description                                                         |
 | ----------------------- | ------------------------------------------------------------------- |
 | `--output DIR`          | Output directory. Default: `downloads`                              |
-| `--audio-format FORMAT` | Audio format: `mp3`, `opus`, `flac`, or `wav`                       |
+| `--audio-format FORMAT` | Audio format: `mp3`, `opus`, `flac`, `wav`, `m4a`, or `source` |
 | `--browser BROWSER`     | Browser to use for YouTube cookies                                  |
 | `--list-browsers`       | List detected browsers and YouTube cookie availability              |
 | `--no-lyrics`           | Disable lyrics downloading                                          |
@@ -434,6 +464,16 @@ ytmusic-dl \
 ```
 
 ## Troubleshooting
+
+### `HTTP Error 403: Forbidden`
+
+YouTube refused the media download. Sign in to YouTube in a supported browser, confirm cookies are detected with:
+
+```bash
+ytmusic-dl --list-browsers
+```
+
+then let the downloader detect them automatically or pass `--browser NAME` explicitly.
 
 ### `Signature solving failed`
 
@@ -513,6 +553,9 @@ Metadata and artwork are embedded using format-appropriate tagging:
 - Opus — Vorbis comments and embedded artwork
 - FLAC — Vorbis comments and embedded FLAC picture metadata
 - WAV — ID3 metadata and APIC artwork
+- M4A — MP4 atoms and embedded cover art
+
+Source mode keeps the container `yt-dlp` chose, so the extension may be `.m4a` or `.webm` instead of the requested format. WebM files are not tagged.
 
 Lyrics are saved separately as `.lrc` files when suitable lyrics are available.
 
@@ -537,7 +580,7 @@ uv run pytest -v
 Current test status:
 
 ```text
-149 passed
+161 passed
 ```
 
 The test suite covers:

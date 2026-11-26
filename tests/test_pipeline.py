@@ -3,6 +3,7 @@ from unittest.mock import patch
 
 from ytmusic_dl.browser import BrowserProfile
 from ytmusic_dl.models import (
+    DownloadInfo,
     LyricsCandidate,
     LyricsResult,
     Track,
@@ -485,7 +486,7 @@ def test_process_track_writes_high_confidence_lyrics(
     with (
         patch(
             "ytmusic_dl.pipeline.download_track",
-            return_value=audio_path,
+            return_value=DownloadInfo(path=audio_path),
         ),
         patch("ytmusic_dl.pipeline.write_metadata"),
         patch(
@@ -517,7 +518,7 @@ def test_process_track_skips_medium_lyrics_by_default(
     with (
         patch(
             "ytmusic_dl.pipeline.download_track",
-            return_value=audio_path,
+            return_value=DownloadInfo(path=audio_path),
         ),
         patch("ytmusic_dl.pipeline.write_metadata"),
         patch(
@@ -552,7 +553,7 @@ def test_process_track_accepts_medium_when_configured(
     with (
         patch(
             "ytmusic_dl.pipeline.download_track",
-            return_value=audio_path,
+            return_value=DownloadInfo(path=audio_path),
         ),
         patch("ytmusic_dl.pipeline.write_metadata"),
         patch(
@@ -585,7 +586,7 @@ def test_process_track_reports_missing_lyrics(
     with (
         patch(
             "ytmusic_dl.pipeline.download_track",
-            return_value=audio_path,
+            return_value=DownloadInfo(path=audio_path),
         ),
         patch("ytmusic_dl.pipeline.write_metadata"),
         patch(
@@ -606,5 +607,132 @@ def test_process_track_reports_missing_lyrics(
     mock_write.assert_not_called()
 
     assert "No suitable lyrics found." in (
+        capsys.readouterr().out
+    )
+
+def test_process_track_reports_audio_streams(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    """Report source and output codec, bitrate, and mode."""
+
+    track = make_track(1)
+    audio_path = tmp_path / "song.mp3"
+
+    download = DownloadInfo(
+        path=audio_path,
+        mode="transcode",
+        source_codec="opus",
+        source_bitrate=160.0,
+        source_ext="webm",
+        output_codec="mp3",
+        output_bitrate=245.0,
+    )
+
+    with (
+        patch(
+            "ytmusic_dl.pipeline.download_track",
+            return_value=download,
+        ),
+        patch("ytmusic_dl.pipeline.write_metadata"),
+        patch(
+            "ytmusic_dl.pipeline.search_candidates",
+            return_value=[],
+        ),
+    ):
+        process_track(
+            track,
+            tmp_path,
+            download_thumbnails=False,
+        )
+
+    output = capsys.readouterr().out
+
+    assert "Source: opus 160 kbps (webm)" in output
+    assert "Output: mp3 245 kbps" in output
+    assert "Mode:   transcode" in output
+
+def test_process_track_warns_about_lossy_flac_source(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    """Warn when FLAC is produced from a lossy source."""
+
+    track = make_track(1)
+    audio_path = tmp_path / "song.flac"
+
+    download = DownloadInfo(
+        path=audio_path,
+        mode="transcode",
+        source_codec="opus",
+        source_bitrate=160.0,
+        source_ext="webm",
+        output_codec="flac",
+        output_bitrate=None,
+    )
+
+    with (
+        patch(
+            "ytmusic_dl.pipeline.download_track",
+            return_value=download,
+        ),
+        patch("ytmusic_dl.pipeline.write_metadata"),
+        patch(
+            "ytmusic_dl.pipeline.search_candidates",
+            return_value=[],
+        ),
+    ):
+        process_track(
+            track,
+            tmp_path,
+            download_thumbnails=False,
+            audio_format="flac",
+        )
+
+    output = capsys.readouterr().out
+
+    assert (
+        "Warning: FLAC cannot restore quality from a lossy source"
+        in output
+    )
+
+def test_process_track_survives_unsupported_metadata(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    """Keep a downloaded native file when tags are unsupported."""
+
+    track = make_track(1)
+    audio_path = tmp_path / "song.webm"
+
+    with (
+        patch(
+            "ytmusic_dl.pipeline.download_track",
+            return_value=DownloadInfo(
+                path=audio_path,
+                mode="copy",
+                source_codec="opus",
+            ),
+        ),
+        patch(
+            "ytmusic_dl.pipeline.write_metadata",
+            side_effect=ValueError(
+                "Unsupported audio format: .webm"
+            ),
+        ),
+        patch(
+            "ytmusic_dl.pipeline.search_candidates",
+            return_value=[],
+        ),
+    ):
+        result = process_track(
+            track,
+            tmp_path,
+            download_thumbnails=False,
+            audio_format="source",
+        )
+
+    assert result.audio_path == audio_path
+    assert "Warning: Could not write metadata" in (
         capsys.readouterr().out
     )

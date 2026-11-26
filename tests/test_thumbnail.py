@@ -5,6 +5,7 @@ import pytest
 from mutagen.flac import FLAC, Picture
 from mutagen.id3 import ID3
 from mutagen.mp3 import MP3
+from mutagen.mp4 import MP4, MP4Cover
 from mutagen.oggopus import OggOpus
 from mutagen.wave import WAVE
 
@@ -74,6 +75,29 @@ def create_test_wav(path: Path) -> None:
             "0.1",
             "-c:a",
             "pcm_s16le",
+            str(path),
+        ],
+        check=True,
+        capture_output=True,
+    )
+
+def create_test_m4a(path: Path) -> None:
+    """Create a minimal valid M4A fixture."""
+
+    import subprocess
+
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            "anullsrc=r=44100:cl=stereo",
+            "-t",
+            "0.1",
+            "-c:a",
+            "aac",
             str(path),
         ],
         check=True,
@@ -203,6 +227,30 @@ def test_embed_thumbnail_wav(tmp_path: Path) -> None:
     assert covers[0].mime == "image/jpeg"
     assert covers[0].type == 3
     assert covers[0].data == thumbnail_data
+
+def test_embed_thumbnail_m4a(tmp_path: Path) -> None:
+    """Test embedding artwork into M4A."""
+
+    audio_path = tmp_path / "test.m4a"
+
+    create_test_m4a(audio_path)
+
+    thumbnail_data = b"fake-jpeg-data"
+
+    embed_thumbnail(
+        audio_path,
+        thumbnail_data,
+    )
+
+    audio = MP4(audio_path)
+
+    assert audio.tags is not None
+
+    covers = audio.tags["covr"]
+
+    assert len(covers) == 1
+    assert covers[0].imageformat == MP4Cover.FORMAT_JPEG
+    assert bytes(covers[0]) == thumbnail_data
 
 def test_embed_thumbnail_unsupported_format(
     tmp_path: Path,

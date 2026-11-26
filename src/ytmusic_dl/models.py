@@ -119,3 +119,15 @@ class TrackResult:
     lyrics_written: bool
     thumbnail_embedded: bool
     skipped: bool = False
+
+@dataclass
+class DownloadInfo:
+    """Details about a downloaded audio file."""
+
+    path: Path
+    mode: str = "transcode"
+    source_codec: str | None = None
+    source_bitrate: float | None = None
+    source_ext: str | None = None
+    output_codec: str | None = None
+    output_bitrate: float | None = None

@@ -11,7 +11,11 @@ from pathlib import Path
 
 from ytmusic_dl.browser import find_browser, list_browsers
 from ytmusic_dl.cli_lyrics import run_lyrics_command
-from ytmusic_dl.downloader import extract_playlist, extract_single_track
+from ytmusic_dl.downloader import (
+    AUDIO_FORMATS,
+    extract_playlist,
+    extract_single_track,
+)
 from ytmusic_dl.log import configure_logging
 from ytmusic_dl.pipeline import process_playlist
 
@@ -73,9 +77,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     parser.add_argument(
         "--audio-format",
-        choices=("mp3", "opus", "flac", "wav"),
+        choices=AUDIO_FORMATS,
         default="mp3",
-        help="Audio format (default: mp3)",
+        help=(
+            "Audio format (default: mp3; 'source' keeps the "
+            "original stream without re-encoding)"
+        ),
     )
 
     parser.add_argument(

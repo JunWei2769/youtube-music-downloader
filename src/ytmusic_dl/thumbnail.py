@@ -18,6 +18,7 @@ import httpx
 from mutagen.flac import FLAC, Picture
 from mutagen.id3 import APIC, ID3
 from mutagen.mp3 import MP3
+from mutagen.mp4 import MP4, MP4Cover
 from mutagen.oggopus import OggOpus
 from mutagen.wave import WAVE
 
@@ -121,6 +122,21 @@ def embed_thumbnail(
                 data=thumbnail_data,
             )
         )
+
+        audio.save()
+
+    elif suffix == ".m4a":
+        audio = MP4(audio_path)
+
+        if audio.tags is None:
+            audio.add_tags()
+
+        audio.tags["covr"] = [
+            MP4Cover(
+                thumbnail_data,
+                imageformat=MP4Cover.FORMAT_JPEG,
+            )
+        ]
 
         audio.save()
 

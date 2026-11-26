@@ -44,8 +44,8 @@ The application is organized into focused modules under `src/ytmusic_dl/`:
 
 At the time of this review:
 
-- 149 tests were collected.
-- 149 tests passed.
+- 161 tests were collected.
+- 161 tests passed.
 - No tests depend on a local browser profile or usable YouTube cookies.
 - The README test status matches the suite.
 - CI runs the suite on every push to `main` and on pull requests.
@@ -56,10 +56,8 @@ At the time of this review:
    - Missing durations are treated as acceptable, which caps those matches at `medium` confidence unless the album also matches.
 
 2. **Audio quality limitations**
-   - FLAC/WAV output does not improve the quality of a lossy YouTube source.
-   - MP3 and Opus conversion can introduce additional lossy encoding.
-   - The application does not currently expose a source-preserving output mode.
-   - Source and output codec/bitrate information is not reported.
+   - FLAC/WAV output does not improve the quality of a lossy YouTube source; the downloader now warns about it.
+   - MP3, Opus, and AAC conversion can introduce additional lossy encoding. Use `--audio-format source` to keep the original stream.
 
 3. **Platform considerations**
    - Playlist extraction does not currently use browser cookies; only downloading does.
@@ -131,15 +129,15 @@ At the time of this review:
 
 ### Phase 3: Audio Quality
 
-- [ ] Add a Best/Source output mode.
-- [ ] Prefer stream-copying or remuxing over re-encoding when possible.
-- [ ] Add AAC/M4A output support.
-- [ ] Add M4A metadata and cover-art support using Mutagen's MP4 implementation.
-- [ ] Refactor downloading to use the actual final file path returned by `yt-dlp`.
-- [ ] Update skip-existing logic for dynamically determined extensions.
-- [ ] Make conversion quality explicit for MP3, Opus, and AAC modes.
-- [ ] Report source codec/bitrate, output codec/bitrate, and copy/remux/transcode status.
-- [ ] Warn when FLAC/WAV is selected from a lossy source.
+- [x] Add a Best/Source output mode.
+- [x] Prefer stream-copying or remuxing over re-encoding when possible.
+- [x] Add AAC/M4A output support.
+- [x] Add M4A metadata and cover-art support using Mutagen's MP4 implementation.
+- [x] Refactor downloading to use the actual final file path returned by `yt-dlp`.
+- [x] Update skip-existing logic for dynamically determined extensions.
+- [x] Make conversion quality explicit for MP3, Opus, and AAC modes.
+- [x] Report source codec/bitrate, output codec/bitrate, and copy/remux/transcode status.
+- [x] Warn when FLAC/WAV is selected from a lossy source.
 - [ ] Verify real downloads with `yt-dlp -F` and `ffprobe`.
 
 ### Phase 4: Native Desktop Application

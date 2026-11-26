@@ -18,6 +18,7 @@ from pathlib import Path
 from mutagen.flac import FLAC
 from mutagen.id3 import TALB, TIT2, TPE1, TRCK
 from mutagen.mp3 import MP3
+from mutagen.mp4 import MP4
 from mutagen.oggopus import OggOpus
 from mutagen.wave import WAVE
 
@@ -138,6 +139,26 @@ def write_metadata(audio_path: Path, track: Track) -> None:
             encoding=3,
             text=str(track.playlist_index),
         )
+
+        audio.save()
+
+    elif suffix == ".m4a":
+        audio = MP4(audio_path)
+
+        if audio.tags is None:
+            audio.add_tags()
+
+        audio.tags["\xa9nam"] = [track.title]
+
+        if track.artist:
+            audio.tags["\xa9ART"] = [track.artist]
+
+        if track.album:
+            audio.tags["\xa9alb"] = [track.album]
+
+        audio.tags["trkn"] = [
+            (track.playlist_index, 0)
+        ]
 
         audio.save()
 

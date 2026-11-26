@@ -5,6 +5,7 @@ import pytest
 from mutagen.flac import FLAC
 from mutagen.id3 import ID3
 from mutagen.mp3 import MP3
+from mutagen.mp4 import MP4
 from mutagen.oggopus import OggOpus
 from mutagen.wave import WAVE
 
@@ -141,6 +142,29 @@ def test_write_metadata_wav(tmp_path: Path) -> None:
     assert audio.tags["TALB"].text == ["Test Album"]
     assert audio.tags["TRCK"].text == ["3"]
 
+
+def test_write_metadata_m4a(tmp_path: Path) -> None:
+    """Test writing metadata to an M4A file."""
+
+    audio_path = tmp_path / "test.m4a"
+
+    create_audio_fixture(
+        audio_path,
+        "aac",
+    )
+
+    track = make_track()
+
+    write_metadata(audio_path, track)
+
+    audio = MP4(audio_path)
+
+    assert audio.tags is not None
+
+    assert audio.tags["\xa9nam"] == ["Test Song"]
+    assert audio.tags["\xa9ART"] == ["Test Artist"]
+    assert audio.tags["\xa9alb"] == ["Test Album"]
+    assert audio.tags["trkn"] == [(3, 0)]
 
 def test_write_metadata_unsupported_format(tmp_path: Path) -> None:
     """Test rejection of unsupported audio formats."""
