@@ -1,0 +1,173 @@
+"""
+Regression corpus for lyrics matching.
+
+These cases come from real provider responses captured on 2026-11-26.
+They keep the current accepted behaviour visible and pin down the
+issues that the remaining Phase 2 work must fix.
+"""
+
+from unittest.mock import patch
+
+import pytest
+
+from ytmusic_dl.lyrics import build_candidate, search_candidates
+from ytmusic_dl.models import LyricsResult, LyricsQuery
+
+RICK_QUERY = LyricsQuery(
+    title=(
+        "Rick Astley - Never Gonna Give You Up "
+        "(Official Video) (4K Remaster)"
+    ),
+    artist="Rick Astley",
+    duration=213,
+)
+
+RICK_ALIASES = (
+    "Rick Astley, 理查德 · 保罗 · 艾斯利, "
+    "Richard Paul Astley, RickRoll, Rick Roll"
+)
+
+def make_result(
+    *,
+    provider: str,
+    title: str,
+    artist: str,
+    album: str | None,
+    duration: float | None,
+    synced: str | None = "[00:01.00] Lyrics",
+) -> LyricsResult:
+    """Create a lyrics result captured from a provider."""
+
+    return LyricsResult(
+        provider=provider,
+        provider_id="1",
+        track_name=title,
+        artist_name=artist,
+        album_name=album,
+        duration=duration,
+        instrumental=False,
+        synced_lyrics=synced,
+        plain_lyrics=None,
+    )
+
+def test_netease_alias_list_does_not_lower_confidence() -> None:
+    """A long NetEase alias list must not count as several artists."""
+
+    candidate = build_candidate(
+        RICK_QUERY,
+        make_result(
+            provider="netease",
+            title="Never Gonna Give You Up (Remastered 2022)",
+            artist=RICK_ALIASES,
+            album="Whenever You Need Somebody "
+            "(Deluxe Edition / Remastered 2022)",
+            duration=213.1,
+        ),
+    )
+
+    assert candidate.accepted
+    assert candidate.confidence == "high"
+    assert candidate.score > 0.90
+
+def test_lrclib_video_title_as_album_is_not_rejected() -> None:
+    """LRCLIB echoing the video title as album must stay acceptable."""
+
+    candidate = build_candidate(
+        RICK_QUERY,
+        make_result(
+            provider="lrclib",
+            title=RICK_QUERY.title,
+            artist="Rick Astley",
+            album=RICK_QUERY.title,
+            duration=214,
+        ),
+    )
+
+    assert candidate.accepted
+    assert candidate.confidence == "high"
+
+def test_remaster_ranks_above_pianoforte() -> None:
+    """A remaster is closer to the original than an instrumental cover."""
+
+    remaster = build_candidate(
+        RICK_QUERY,
+        make_result(
+            provider="netease",
+            title="Never Gonna Give You Up (Remastered 2022)",
+            artist=RICK_ALIASES,
+            album="Whenever You Need Somebody",
+            duration=213.1,
+        ),
+    )
+
+    pianoforte = build_candidate(
+        RICK_QUERY,
+        make_result(
+            provider="netease",
+            title="Never Gonna Give You Up (Pianoforte)",
+            artist=RICK_ALIASES,
+            album="Never Gonna Give You Up (Pianoforte)",
+            duration=209.6,
+        ),
+    )
+
+    assert remaster.score > pianoforte.score
+
+def test_missing_duration_stays_medium_confidence() -> None:
+    """A correct match without a known duration cannot be high."""
+
+    query = LyricsQuery(
+        title="空耳 + 还你茉莉 (Live)",
+        artist="单依纯",
+    )
+
+    candidate = build_candidate(
+        query,
+        make_result(
+            provider="netease",
+            title="空耳+还你茉莉（Live）",
+            artist="单依纯",
+            album="空耳+还你茉莉",
+            duration=538.0,
+        ),
+    )
+
+    assert candidate.accepted
+    assert candidate.confidence == "medium"
+    assert "duration not compared" in candidate.match_reasons
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="candidate deduplication is not implemented yet",
+)
+def test_same_recording_under_two_albums_is_deduplicated() -> None:
+    """One recording listed under two album names should appear once."""
+
+    results = [
+        make_result(
+            provider="netease",
+            title="Never Gonna Give You Up (Remastered 2022)",
+            artist=RICK_ALIASES,
+            album="Whenever You Need Somebody",
+            duration=213.1,
+        ),
+        make_result(
+            provider="netease",
+            title="Never Gonna Give You Up (Remastered 2022)",
+            artist=RICK_ALIASES,
+            album="Never",
+            duration=213.1,
+        ),
+    ]
+
+    with patch(
+        "ytmusic_dl.lyrics.service.search_lyrics",
+        return_value=results,
+    ):
+        candidates = [
+            candidate
+            for candidate in search_candidates(RICK_QUERY)
+            if candidate.accepted
+        ]
+
+    assert len(candidates) == 1

@@ -530,7 +530,7 @@ uv run pytest -v
 Current test status:
 
 ```text
-112 passed
+116 passed, 1 xfailed
 ```
 
 The test suite covers:

@@ -144,7 +144,10 @@ def _artist_similarity(
         overlap = first_artists & second_artists
 
         if overlap:
-            return len(overlap) / max(
+            # Providers, especially NetEase, can list many aliases
+            # for one artist. Compare against the shorter list so an
+            # alias dump does not dilute a real name match.
+            return len(overlap) / min(
                 len(first_artists),
                 len(second_artists),
             )

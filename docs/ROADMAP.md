@@ -44,8 +44,8 @@ The application is organized into focused modules under `src/ytmusic_dl/`:
 
 At the time of this review:
 
-- 112 tests were collected.
-- 112 tests passed.
+- 117 tests were collected.
+- 116 tests passed, with 1 expected failure for deduplication, which is not implemented yet.
 - No tests depend on a local browser profile or usable YouTube cookies.
 - The README test status matches the suite.
 - CI runs the suite on every push to `main` and on pull requests.
@@ -111,13 +111,14 @@ At the time of this review:
 ### Phase 2: Lyrics Accuracy
 
 - [ ] Create a regression corpus for same-title, same-artist, version, cover, bilingual, missing-duration, and instrumental cases.
+  - Initial corpus: `tests/test_lyrics_regression.py`, built from the real responses below. It grows with each scoring fix.
   - Observed in real runs (2026-11-26):
     - YouTube titles containing `Official Video` or `4K Remaster` used to pollute NetEase search terms. (Fixed: search terms are cleaned and capped at six.)
     - Those same tokens still lower title similarity during scoring, even when the provider's title is clean.
     - NetEase filters rejected candidates internally, so the CLI cannot show why they lost. (Fixed: NetEase now returns every candidate; the service scores and explains them.)
     - LRCLIB sometimes repeats the video title in the album field, so album comparison cannot be a strict requirement.
     - A correct match with no known duration still reaches `medium` confidence.
-    - NetEase artist fields list many aliases, which depresses artist similarity even when the canonical name matches (`Rick Astley` scored 0.20).
+    - NetEase artist fields list many aliases, which depressed artist similarity even when the canonical name matched (`Rick Astley` scored 0.20). (Fixed: similarity now compares against the shorter artist list, so an alias match scores 1.0.)
     - NetEase can return the same recording under different album names, so cross-candidate deduplication is needed.
 - [x] Use aggressive title normalization for search only, not as sole proof of a correct match.
 - [ ] Include album, artist, title, duration, and version compatibility in scoring.
