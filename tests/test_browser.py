@@ -1,3 +1,5 @@
+import os
+import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -10,6 +12,7 @@ from ytmusic_dl.browser import (
     find_browser,
     find_browser_with_cookies,
     get_browser_path,
+    get_ytdlp_cookie_options,
     has_youtube_cookies,
 )
 
@@ -303,6 +306,81 @@ def test_find_browser_with_cookies_falls_back() -> None:
         browser = find_browser_with_cookies()
 
     assert browser == firefox
+
+def test_get_ytdlp_cookie_options_uses_primary_database(
+    tmp_path: Path,
+) -> None:
+    """Ignore newer cookie databases created by browser extensions."""
+
+    profile = tmp_path / "Chrome" / "Default"
+    profile.mkdir(parents=True)
+
+    (profile / "Cookies").write_bytes(b"primary")
+
+    extension = (
+        profile / "Storage" / "ext" / "glic" / "66"
+    )
+    extension.mkdir(parents=True)
+
+    extension_cookies = extension / "Cookies"
+    extension_cookies.write_bytes(b"extension")
+
+    # yt-dlp picks the newest file named Cookies.
+    future = time.time() + 60
+    os.utime(extension_cookies, (future, future))
+
+    browser = BrowserProfile(
+        name="chrome",
+        path=profile,
+    )
+
+    name, prepared = get_ytdlp_cookie_options(browser)
+
+    assert name == "chrome"
+    assert Path(prepared) != profile
+    assert Path(prepared).name == "Default"
+    assert (Path(prepared) / "Cookies").read_bytes() == (
+        b"primary"
+    )
+
+    # The prepared profile is cached for the process lifetime.
+    _, prepared_again = get_ytdlp_cookie_options(browser)
+    assert prepared_again == prepared
+
+def test_get_ytdlp_cookie_options_prefers_network_database(
+    tmp_path: Path,
+) -> None:
+    """Prefer the Network cookie database when Chrome uses it."""
+
+    profile = tmp_path / "Chrome" / "Profile 1"
+    profile.mkdir(parents=True)
+
+    (profile / "Cookies").write_bytes(b"old")
+
+    network = profile / "Network"
+    network.mkdir()
+    (network / "Cookies").write_bytes(b"new")
+
+    _, prepared = get_ytdlp_cookie_options(
+        BrowserProfile(name="chrome", path=profile)
+    )
+
+    assert (Path(prepared) / "Cookies").read_bytes() == b"new"
+
+def test_get_ytdlp_cookie_options_keeps_firefox_profile(
+    tmp_path: Path,
+) -> None:
+    """Pass Firefox profiles through unchanged."""
+
+    profile = tmp_path / "firefox" / "abc.default"
+    profile.mkdir(parents=True)
+
+    name, prepared = get_ytdlp_cookie_options(
+        BrowserProfile(name="firefox", path=profile)
+    )
+
+    assert name == "firefox"
+    assert prepared == str(profile)
 
 def test_find_browser_by_name() -> None:
     """Return a specific browser with usable YouTube cookies."""

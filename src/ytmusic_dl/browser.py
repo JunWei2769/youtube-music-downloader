@@ -1,5 +1,8 @@
+import atexit
 import os
 import platform
+import shutil
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -18,6 +21,14 @@ CHROMIUM_BROWSERS = {
 FIREFOX_BROWSERS = {
     "firefox",
 }
+
+# yt-dlp searches a browser profile recursively for a file named
+# "Cookies" and picks the newest one. Chrome extensions keep their own
+# cookie databases under Storage/ext, which can be newer than the
+# profile database. These caches point yt-dlp at a temporary profile
+# that contains only the primary database.
+_COOKIE_PROFILE_CACHE: dict[str, str] = {}
+_COOKIE_TEMP_DIRS: list[tempfile.TemporaryDirectory] = []
 
 
 @dataclass(frozen=True)
@@ -231,10 +242,68 @@ def list_browsers() -> list[tuple[BrowserProfile, bool]]:
 
     return browsers
 
+def _primary_cookie_database(
+    profile_path: Path,
+) -> Path | None:
+    """Return the primary Chromium cookie database for a profile."""
+
+    for relative in ("Network/Cookies", "Cookies"):
+        candidate = profile_path / relative
+
+        if candidate.is_file():
+            return candidate
+
+    return None
+
+def _prepare_cookie_profile(
+    browser: BrowserProfile,
+) -> str:
+    """Return a profile path containing only the primary cookie DB."""
+
+    cached = _COOKIE_PROFILE_CACHE.get(str(browser.path))
+
+    if cached is not None:
+        return cached
+
+    database = _primary_cookie_database(browser.path)
+
+    if database is None:
+        return str(browser.path)
+
+    temp_dir = tempfile.TemporaryDirectory(
+        prefix="ytmusic_dl_cookies_"
+    )
+
+    root = Path(temp_dir.name)
+    profile = root / browser.path.name
+    profile.mkdir()
+
+    shutil.copy2(database, profile / "Cookies")
+
+    # Windows decrypts the cookie key from Local State next to the
+    # profile directory, so the temporary layout mirrors Chrome's.
+    if platform.system() == "Windows":
+        local_state = browser.path.parent / "Local State"
+
+        if local_state.is_file():
+            shutil.copy2(
+                local_state,
+                root / "Local State",
+            )
+
+    atexit.register(temp_dir.cleanup)
+    _COOKIE_TEMP_DIRS.append(temp_dir)
+    _COOKIE_PROFILE_CACHE[str(browser.path)] = str(profile)
+
+    return str(profile)
+
 def get_ytdlp_cookie_options(
     browser: BrowserProfile,
 ) -> tuple[str, str]:
     """Return yt-dlp cookies-from-browser arguments."""
+
+    if browser.name in CHROMIUM_BROWSERS:
+        return browser.name, _prepare_cookie_profile(browser)
 
     return browser.name, str(browser.path)
 
