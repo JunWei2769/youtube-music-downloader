@@ -44,8 +44,8 @@ The application is organized into focused modules under `src/ytmusic_dl/`:
 
 At the time of this review:
 
-- 234 tests were collected.
-- 234 tests passed.
+- 242 tests were collected.
+- 242 tests passed.
 - GUI tests are skipped when PySide6 is not installed.
 - No tests depend on a local browser profile or usable YouTube cookies.
 - The README test status matches the suite.
@@ -58,7 +58,8 @@ At the time of this review:
 
 2. **Audio quality limitations**
    - FLAC/WAV output does not improve the quality of a lossy YouTube source; the downloader now warns about it.
-   - MP3, Opus, and AAC conversion can introduce additional lossy encoding. Use `--audio-format source` to keep the original stream.
+   - MP3, Opus, and AAC conversion can introduce additional lossy encoding. Use `--audio-format source` to keep the original stream. Opus→Opus is remuxed and AAC→M4A is copied instead of re-encoded.
+   - A signed-in macOS Chrome account exposed only Opus 251 and AAC 140 (~129 kbps) across all tested `yt-dlp` clients, including missing-POT formats. No 256 kbps stream was offered, so YouTube Music Premium may be required for high quality.
 
 3. **Platform considerations**
    - Playlist extraction does not currently use browser cookies; only downloading does.
@@ -140,6 +141,7 @@ At the time of this review:
 - [x] Update skip-existing logic for dynamically determined extensions.
 - [x] Make conversion quality explicit for MP3, Opus, and AAC modes.
 - [x] Report source codec/bitrate, output codec/bitrate, and copy/remux/transcode status.
+- [x] Add a format/quality audit command (`--list-formats`) for available audio streams.
 - [x] Warn when FLAC/WAV is selected from a lossy source.
 - [x] Verify real downloads with `yt-dlp -F` and `ffprobe`.
 

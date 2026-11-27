@@ -13,7 +13,12 @@ import pytest
 
 from ytmusic_dl.browser import BrowserProfile
 from ytmusic_dl.cli import build_parser, main
-from ytmusic_dl.models import PlaylistResult, Track
+from ytmusic_dl.models import (
+    AudioFormatInfo,
+    AudioFormatReport,
+    PlaylistResult,
+    Track,
+)
 
 
 def test_build_parser() -> None:
@@ -617,3 +622,66 @@ def test_main_with_opus_format() -> None:
         audio_format="opus",
         lyrics_min_confidence="high",
     )
+
+def test_main_list_formats(capsys) -> None:
+    """Print available audio formats without downloading."""
+
+    report = AudioFormatReport(
+        title="Test Song",
+        formats=[
+            AudioFormatInfo(
+                format_id="140",
+                extension="m4a",
+                codec="mp4a.40.2",
+                bitrate=129.5,
+                note="medium",
+            ),
+            AudioFormatInfo(
+                format_id="251",
+                extension="webm",
+                codec="opus",
+                bitrate=128.9,
+                note="medium",
+            ),
+        ],
+        selected_format_id="251",
+    )
+
+    url = "https://music.youtube.com/watch?v=test"
+
+    with (
+        patch(
+            "ytmusic_dl.cli.find_browser_with_cookies",
+            return_value=None,
+        ),
+        patch(
+            "ytmusic_dl.cli.list_audio_formats",
+            return_value=report,
+        ) as mock_list,
+        patch(
+            "sys.argv",
+            ["ytmusic-dl", "--list-formats", url],
+        ),
+    ):
+        main()
+
+    output = capsys.readouterr().out
+
+    assert "Available Audio Formats" in output
+    assert "Test Song" in output
+    assert "Selected by bestaudio: 251" in output
+    assert "No high-bitrate" in output
+
+    mock_list.assert_called_once_with(url, None)
+
+def test_main_list_formats_requires_url() -> None:
+    """Require a URL for the format audit."""
+
+    with (
+        patch(
+            "sys.argv",
+            ["ytmusic-dl", "--list-formats"],
+        ),
+        pytest.raises(SystemExit),
+    ):
+        main()

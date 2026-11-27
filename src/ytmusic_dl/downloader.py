@@ -14,6 +14,7 @@ Purpose: Everything related to yt-dlp
 Responsibility: YouTube Music / yt-dlp
 """
 
+import subprocess
 import threading
 from collections.abc import Callable
 from pathlib import Path
@@ -27,7 +28,13 @@ from ytmusic_dl.browser import (
     BrowserProfile,
     get_ytdlp_cookie_options,
 )
-from ytmusic_dl.models import DownloadInfo, DownloadProgress, Track
+from ytmusic_dl.models import (
+    AudioFormatInfo,
+    AudioFormatReport,
+    DownloadInfo,
+    DownloadProgress,
+    Track,
+)
 from ytmusic_dl.utils import (
     LogCallback,
     build_track_filename,
@@ -48,11 +55,20 @@ AUDIO_FORMATS = (
     "source",
 )
 
-# Explicit conversion targets for lossy formats.
-AUDIO_QUALITY = {
-    "mp3": "0",
-    "opus": "160",
-    "m4a": "256",
+# Conversion settings when the source codec does not match the target.
+AUDIO_CONVERSION = {
+    "mp3": ("libmp3lame", ("-q:a", "0")),
+    "opus": ("libopus", ("-b:a", "160k")),
+    "m4a": ("aac", ("-b:a", "256k")),
+    "flac": ("flac", ()),
+    "wav": ("pcm_s16le", ()),
+}
+
+AUDIO_CODECS = {
+    "mp3": {"mp3"},
+    "opus": {"opus"},
+    "m4a": {"aac", "mp4a.40.2", "alac"},
+    "flac": {"flac"},
 }
 
 AUDIO_EXTENSIONS = (
@@ -214,25 +230,91 @@ def get_track_url(track: Track) -> str:
 
     raise ValueError(f"No video ID or URL available for: {track.title}")
 
-def _build_postprocessors(
+def _codec_matches(
     audio_format: str,
-) -> list[dict[str, str]]:
-    """Build the FFmpeg postprocessors for an output format."""
+    source_codec: str | None,
+) -> bool:
+    """Return whether the source codec already matches the output."""
 
-    if audio_format == "source":
-        return []
+    if not source_codec:
+        return False
 
-    postprocessor = {
-        "key": "FFmpegExtractAudio",
-        "preferredcodec": audio_format,
-    }
+    codec = source_codec.lower()
 
-    quality = AUDIO_QUALITY.get(audio_format)
+    if audio_format == "wav":
+        return codec.startswith("pcm_")
 
-    if quality:
-        postprocessor["preferredquality"] = quality
+    return codec in AUDIO_CODECS.get(audio_format, set())
 
-    return [postprocessor]
+def _conversion_mode(
+    audio_format: str,
+    source_codec: str | None,
+    source_path: Path,
+    target_path: Path,
+) -> str:
+    """Return copy, remux, or transcode for an output request."""
+
+    if source_path == target_path:
+        return "copy"
+
+    if _codec_matches(audio_format, source_codec):
+        return "remux"
+
+    return "transcode"
+
+def _convert_audio(
+    source_path: Path,
+    target_path: Path,
+    audio_format: str,
+    source_codec: str | None,
+) -> str:
+    """Convert or remux audio and return the applied mode."""
+
+    mode = _conversion_mode(
+        audio_format,
+        source_codec,
+        source_path,
+        target_path,
+    )
+
+    if mode == "copy":
+        return mode
+
+    if mode == "remux":
+        codec_arguments = ("-c:a", "copy")
+    else:
+        codec, options = AUDIO_CONVERSION[audio_format]
+        codec_arguments = ("-c:a", codec, *options)
+
+    result = subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(source_path),
+            "-vn",
+            "-map",
+            "0:a:0",
+            *codec_arguments,
+            str(target_path),
+        ],
+        capture_output=True,
+        text=True,
+    )
+
+    if result.returncode != 0:
+        lines = (result.stderr or "").strip().splitlines()
+        message = (
+            lines[-1]
+            if lines
+            else "ffmpeg conversion failed"
+        )
+        raise RuntimeError(message)
+
+    if source_path != target_path and source_path.exists():
+        source_path.unlink()
+
+    return mode
 
 def _find_output_files(
     output_directory: Path,
@@ -407,40 +489,6 @@ def _build_progress_hook(
 
     return hook
 
-def _build_postprocessor_hook(
-    track: Track,
-    progress: ProgressCallback | None,
-    cancel_event: threading.Event | None,
-):
-    """Build a yt-dlp postprocessor hook."""
-
-    def hook(data: dict) -> None:
-        if (
-            cancel_event is not None
-            and cancel_event.is_set()
-        ):
-            raise DownloadCancelled(
-                "Download cancelled by the user."
-            )
-
-        if progress is None:
-            return
-
-        status = str(data.get("status") or "")
-
-        progress(
-            track,
-            DownloadProgress(
-                status=status,
-                percent=(
-                    100.0 if status == "finished" else None
-                ),
-                stage="postprocess",
-            ),
-        )
-
-    return hook
-
 def download_track(
     track: Track,
     output_directory: Path,
@@ -517,19 +565,6 @@ def download_track(
                 cancel_event,
             )
         ]
-        options["postprocessor_hooks"] = [
-            _build_postprocessor_hook(
-                track,
-                progress,
-                cancel_event,
-            )
-        ]
-
-    postprocessors = _build_postprocessors(audio_format)
-
-    if postprocessors:
-        options["postprocessors"] = postprocessors
-
     if cookies_from_browser:
         options["cookiesfrombrowser"] = cookies_from_browser
 
@@ -538,31 +573,144 @@ def download_track(
 
     _apply_download_metadata(track, info)
 
-    audio_path = _resolve_downloaded_path(
+    source_path = _resolve_downloaded_path(
         info,
         output_directory,
         filename,
         audio_format,
     )
 
-    track.audio_path = audio_path
-
     source_codec, source_bitrate, source_ext = (
         _source_stream_info(info)
     )
 
-    output = probe_audio(audio_path)
+    if source_codec is None:
+        source_codec = probe_audio(source_path).codec
+
+    target_path = source_path
+    mode = "copy"
+
+    if audio_format != "source":
+        target_path = (
+            output_directory / f"{filename}.{audio_format}"
+        )
+
+        if target_path != source_path:
+            if progress is not None:
+                progress(
+                    track,
+                    DownloadProgress(
+                        status="started",
+                        stage="postprocess",
+                    ),
+                )
+
+            mode = _convert_audio(
+                source_path,
+                target_path,
+                audio_format,
+                source_codec,
+            )
+
+            if progress is not None:
+                progress(
+                    track,
+                    DownloadProgress(
+                        status="finished",
+                        percent=100.0,
+                        stage="postprocess",
+                    ),
+                )
+
+    track.audio_path = target_path
+    output = probe_audio(target_path)
 
     return DownloadInfo(
-        path=audio_path,
-        mode=(
-            "copy" if audio_format == "source" else "transcode"
-        ),
+        path=target_path,
+        mode=mode,
         source_codec=source_codec,
         source_bitrate=source_bitrate,
         source_ext=source_ext,
         output_codec=output.codec,
         output_bitrate=output.bitrate,
+    )
+
+def list_audio_formats(
+    url: str,
+    browser: BrowserProfile | None = None,
+) -> AudioFormatReport:
+    """Return available audio-only formats and the selected one."""
+
+    options: dict[str, object] = {
+        "quiet": True,
+        "no_warnings": True,
+        "skip_download": True,
+        "format": "bestaudio/best",
+        "extractor_args": {
+            "youtube": {
+                "formats": ["missing_pot"],
+            }
+        },
+    }
+
+    if browser is not None:
+        options["cookiesfrombrowser"] = (
+            get_ytdlp_cookie_options(browser)
+        )
+
+    with YoutubeDL(options) as ydl:  # type: ignore[arg-type]
+        info = ydl.extract_info(url, download=False)
+
+    if not isinstance(info, dict):
+        raise ValueError(
+            "No track information found for that URL."
+        )
+
+    formats: list[AudioFormatInfo] = []
+
+    for item in info.get("formats") or []:
+        if item.get("vcodec") not in (None, "none"):
+            continue
+
+        if item.get("acodec") in (None, "none"):
+            continue
+
+        bitrate = item.get("abr")
+        sample_rate = item.get("asr")
+
+        formats.append(
+            AudioFormatInfo(
+                format_id=str(item.get("format_id", "")),
+                extension=str(item.get("ext", "")),
+                codec=item.get("acodec"),
+                bitrate=(
+                    float(bitrate)
+                    if bitrate is not None
+                    else None
+                ),
+                sample_rate=(
+                    float(sample_rate)
+                    if sample_rate is not None
+                    else None
+                ),
+                note=item.get("format_note"),
+                protocol=item.get("protocol"),
+            )
+        )
+
+    formats.sort(
+        key=lambda audio: audio.bitrate or 0,
+        reverse=True,
+    )
+
+    selected = info.get("format_id")
+
+    return AudioFormatReport(
+        title=str(info.get("title", "")),
+        formats=formats,
+        selected_format_id=(
+            str(selected) if selected else None
+        ),
     )
 
 def extract_single_track(url: str) -> list[Track]:

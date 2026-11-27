@@ -15,6 +15,7 @@ from ytmusic_dl.downloader import (
     extract_playlist,
     extract_single_track,
     find_existing_audio,
+    list_audio_formats,
 )
 from ytmusic_dl.models import DownloadProgress, Track
 
@@ -35,27 +36,68 @@ def make_track() -> Track:
         playlist_name="Test Playlist",
     )
 
+SOURCE_EXTENSIONS = {
+    "mp3": "webm",
+    "opus": "webm",
+    "m4a": "m4a",
+    "flac": "webm",
+    "wav": "webm",
+    "source": "webm",
+}
+
+SOURCE_CODECS = {
+    "mp3": "opus",
+    "opus": "opus",
+    "m4a": "mp4a.40.2",
+    "flac": "opus",
+    "wav": "opus",
+    "source": "opus",
+}
+
+CONVERSION_MODES = {
+    "mp3": "transcode",
+    "opus": "remux",
+    "m4a": "transcode",
+    "flac": "transcode",
+    "wav": "transcode",
+    "source": "copy",
+}
+
 def run_download(
     tmp_path: Path,
     audio_format: str,
-    extension: str,
+    *,
+    source_extension: str | None = None,
+    source_codec: str | None = None,
 ) -> tuple:
-    """Run download_track against a mocked yt-dlp."""
+    """Run download_track with a native source and mocked conversion."""
 
     track = make_track()
     output_directory = tmp_path / "downloads"
 
-    expected_path = (
+    source_extension = (
+        source_extension or SOURCE_EXTENSIONS[audio_format]
+    )
+    source_codec = source_codec or SOURCE_CODECS[audio_format]
+
+    source_path = (
         output_directory
-        / f"01 - Test Artist - Test Song.{extension}"
+        / f"01 - Test Artist - Test Song.{source_extension}"
+    )
+
+    target_path = (
+        source_path
+        if audio_format == "source"
+        else output_directory
+        / f"01 - Test Artist - Test Song.{audio_format}"
     )
 
     info = {
-        "acodec": "opus",
+        "acodec": source_codec,
         "abr": 160.0,
-        "ext": "webm",
+        "ext": source_extension,
         "requested_downloads": [
-            {"filepath": str(expected_path)}
+            {"filepath": str(source_path)}
         ],
     }
 
@@ -65,10 +107,17 @@ def run_download(
         patch(
             "ytmusic_dl.downloader.probe_audio",
             return_value=AudioStreamInfo(
-                codec=extension,
+                codec=(
+                    "opus"
+                    if audio_format == "source"
+                    else audio_format
+                ),
                 bitrate=128.0,
             ),
         ),
+        patch(
+            "ytmusic_dl.downloader._convert_audio"
+        ) as mock_convert,
     ):
         mock_instance = MagicMock()
         mock_ydl.return_value.__enter__.return_value = (
@@ -76,14 +125,17 @@ def run_download(
         )
 
         def fake_extract(url: str, download: bool) -> dict:
-            expected_path.parent.mkdir(
+            source_path.parent.mkdir(
                 parents=True,
                 exist_ok=True,
             )
-            expected_path.touch()
+            source_path.touch()
             return info
 
         mock_instance.extract_info.side_effect = fake_extract
+        mock_convert.return_value = CONVERSION_MODES[
+            audio_format
+        ]
 
         result = download_track(
             track,
@@ -94,137 +146,170 @@ def run_download(
 
     return (
         result,
-        expected_path,
+        target_path,
+        source_path,
         mock_ydl,
         mock_instance,
+        mock_convert,
         track,
     )
 
 def test_download_track_mp3(tmp_path: Path) -> None:
-    """Test MP3 download configuration."""
+    """Transcode Opus to MP3."""
 
-    result, expected_path, mock_ydl, mock_instance, track = (
-        run_download(tmp_path, "mp3", "mp3")
-    )
+    (
+        result,
+        target_path,
+        source_path,
+        mock_ydl,
+        mock_instance,
+        mock_convert,
+        track,
+    ) = run_download(tmp_path, "mp3")
 
-    assert result.path == expected_path
+    assert result.path == target_path
     assert result.mode == "transcode"
 
     options = mock_ydl.call_args.args[0]
 
     assert options["format"] == "bestaudio/best"
+    assert "postprocessors" not in options
 
-    assert options["postprocessors"] == [
-        {
-            "key": "FFmpegExtractAudio",
-            "preferredcodec": "mp3",
-            "preferredquality": "0",
-        }
-    ]
+    mock_convert.assert_called_once_with(
+        source_path,
+        target_path,
+        "mp3",
+        "opus",
+    )
 
     mock_instance.extract_info.assert_called_once_with(
         track.webpage_url,
         download=True,
     )
 
-def test_download_track_opus(tmp_path: Path) -> None:
-    """Test Opus download configuration."""
+def test_download_track_opus_remuxes(
+    tmp_path: Path,
+) -> None:
+    """Remux Opus/WebM to Opus without re-encoding."""
 
-    result, expected_path, mock_ydl, _, _ = run_download(
-        tmp_path,
+    (
+        result,
+        target_path,
+        source_path,
+        _,
+        _,
+        mock_convert,
+        _,
+    ) = run_download(tmp_path, "opus")
+
+    assert result.path == target_path
+    assert result.mode == "remux"
+    assert target_path.suffix == ".opus"
+
+    mock_convert.assert_called_once_with(
+        source_path,
+        target_path,
         "opus",
         "opus",
     )
 
-    assert result.path == expected_path
+def test_download_track_m4a_copies(
+    tmp_path: Path,
+) -> None:
+    """Keep an AAC/M4A source when M4A is requested."""
 
-    options = mock_ydl.call_args.args[0]
+    (
+        result,
+        target_path,
+        source_path,
+        _,
+        _,
+        mock_convert,
+        _,
+    ) = run_download(tmp_path, "m4a")
 
-    assert options["postprocessors"] == [
-        {
-            "key": "FFmpegExtractAudio",
-            "preferredcodec": "opus",
-            "preferredquality": "160",
-        }
-    ]
+    assert result.path == target_path
+    assert result.path == source_path
+    assert result.mode == "copy"
+    mock_convert.assert_not_called()
 
-def test_download_track_flac(tmp_path: Path) -> None:
-    """Test FLAC download configuration."""
+def test_download_track_m4a_from_opus_transcodes(
+    tmp_path: Path,
+) -> None:
+    """Transcode when the source codec differs from M4A."""
 
-    result, expected_path, mock_ydl, _, _ = run_download(
-        tmp_path,
-        "flac",
-        "flac",
-    )
-
-    assert result.path == expected_path
-
-    options = mock_ydl.call_args.args[0]
-
-    assert options["postprocessors"] == [
-        {
-            "key": "FFmpegExtractAudio",
-            "preferredcodec": "flac",
-        }
-    ]
-
-def test_download_track_wav(tmp_path: Path) -> None:
-    """Test WAV download configuration."""
-
-    result, expected_path, mock_ydl, _, _ = run_download(
-        tmp_path,
-        "wav",
-        "wav",
-    )
-
-    assert result.path == expected_path
-
-    options = mock_ydl.call_args.args[0]
-
-    assert options["postprocessors"] == [
-        {
-            "key": "FFmpegExtractAudio",
-            "preferredcodec": "wav",
-        }
-    ]
-
-def test_download_track_m4a(tmp_path: Path) -> None:
-    """Test M4A download configuration."""
-
-    result, expected_path, mock_ydl, _, _ = run_download(
+    (
+        result,
+        target_path,
+        source_path,
+        _,
+        _,
+        mock_convert,
+        _,
+    ) = run_download(
         tmp_path,
         "m4a",
-        "m4a",
+        source_extension="webm",
+        source_codec="opus",
     )
 
-    assert result.path == expected_path
+    assert result.path == target_path
+    assert result.mode == "transcode"
 
-    options = mock_ydl.call_args.args[0]
+    mock_convert.assert_called_once_with(
+        source_path,
+        target_path,
+        "m4a",
+        "opus",
+    )
 
-    assert options["postprocessors"] == [
-        {
-            "key": "FFmpegExtractAudio",
-            "preferredcodec": "m4a",
-            "preferredquality": "256",
-        }
-    ]
+def test_download_track_flac_transcodes(
+    tmp_path: Path,
+) -> None:
+    """Transcode Opus to FLAC."""
+
+    result, target_path, _, _, _, mock_convert, _ = (
+        run_download(tmp_path, "flac")
+    )
+
+    assert result.path == target_path
+    assert result.mode == "transcode"
+    mock_convert.assert_called_once()
+
+def test_download_track_wav_transcodes(
+    tmp_path: Path,
+) -> None:
+    """Transcode Opus to WAV."""
+
+    result, target_path, _, _, _, mock_convert, _ = (
+        run_download(tmp_path, "wav")
+    )
+
+    assert result.path == target_path
+    assert result.mode == "transcode"
+    mock_convert.assert_called_once()
 
 def test_download_track_source_keeps_native_format(
     tmp_path: Path,
 ) -> None:
     """Source mode keeps the native stream without re-encoding."""
 
-    result, expected_path, mock_ydl, _, _ = run_download(
-        tmp_path,
-        "source",
-        "webm",
-    )
+    (
+        result,
+        target_path,
+        source_path,
+        mock_ydl,
+        _,
+        mock_convert,
+        _,
+    ) = run_download(tmp_path, "source")
 
-    assert result.path == expected_path
+    assert result.path == target_path == source_path
     assert result.mode == "copy"
     assert result.source_codec == "opus"
     assert result.source_bitrate == 160.0
     assert result.source_ext == "webm"
+    mock_convert.assert_not_called()
 
     options = mock_ydl.call_args.args[0]
 
@@ -625,3 +710,70 @@ def test_apply_download_metadata_keeps_corrected_duration() -> None:
     _apply_download_metadata(track, {"duration": 249})
 
     assert track.duration == 210
+
+def test_list_audio_formats() -> None:
+    """Report audio-only formats sorted by bitrate."""
+
+    info = {
+        "title": "Test Song",
+        "format_id": "251",
+        "formats": [
+            {
+                "format_id": "sb0",
+                "vcodec": "none",
+                "acodec": "none",
+                "ext": "mhtml",
+            },
+            {
+                "format_id": "401",
+                "vcodec": "av01",
+                "acodec": "none",
+                "ext": "mp4",
+            },
+            {
+                "format_id": "140",
+                "vcodec": "none",
+                "acodec": "mp4a.40.2",
+                "abr": 129.5,
+                "asr": 44100,
+                "ext": "m4a",
+                "format_note": "medium",
+            },
+            {
+                "format_id": "251",
+                "vcodec": "none",
+                "acodec": "opus",
+                "abr": 128.9,
+                "asr": 48000,
+                "ext": "webm",
+                "format_note": "medium",
+            },
+        ],
+    }
+
+    with patch("ytmusic_dl.downloader.YoutubeDL") as mock_ydl:
+        mock_instance = MagicMock()
+        mock_ydl.return_value.__enter__.return_value = (
+            mock_instance
+        )
+        mock_instance.extract_info.return_value = info
+
+        report = list_audio_formats(
+            "https://music.youtube.com/watch?v=test"
+        )
+
+    assert report.title == "Test Song"
+    assert report.selected_format_id == "251"
+    assert [fmt.format_id for fmt in report.formats] == [
+        "140",
+        "251",
+    ]
+    assert report.formats[0].bitrate == 129.5
+    assert report.formats[1].codec == "opus"
+
+    options = mock_ydl.call_args.args[0]
+
+    assert options["format"] == "bestaudio/best"
+    assert options["extractor_args"]["youtube"][
+        "formats"
+    ] == ["missing_pot"]

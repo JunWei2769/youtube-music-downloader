@@ -9,12 +9,17 @@ import sys
 from importlib.metadata import version
 from pathlib import Path
 
-from ytmusic_dl.browser import find_browser, list_browsers
+from ytmusic_dl.browser import (
+    find_browser,
+    find_browser_with_cookies,
+    list_browsers,
+)
 from ytmusic_dl.cli_lyrics import run_lyrics_command
 from ytmusic_dl.downloader import (
     AUDIO_FORMATS,
     extract_playlist,
     extract_single_track,
+    list_audio_formats,
 )
 from ytmusic_dl.log import configure_logging
 from ytmusic_dl.pipeline import process_playlist
@@ -107,6 +112,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     parser.add_argument(
+        "--list-formats",
+        action="store_true",
+        help=(
+            "List available audio formats and the selected "
+            "bestaudio format for a URL"
+        ),
+    )
+
+    parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",
@@ -114,6 +128,117 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     return parser
+
+def _print_format_audit(args: argparse.Namespace) -> None:
+    """Print available audio formats for a URL."""
+
+    browser = None
+
+    if args.browser:
+        browser = find_browser(args.browser)
+
+        if browser is None:
+            print(
+                "Error: Could not find usable YouTube cookies "
+                f"in {args.browser}."
+            )
+            return
+    else:
+        browser = find_browser_with_cookies()
+
+        if browser is not None:
+            print(f"Using {browser.name} browser cookies")
+            print()
+
+    try:
+        report = list_audio_formats(args.url, browser)
+    except Exception as error:
+        print(f"Error: Could not list formats: {error}")
+        return
+
+    print("=" * 60)
+    print("Available Audio Formats")
+    print("=" * 60)
+    print(f"Title: {report.title}")
+    print()
+
+    if not report.formats:
+        print("No audio-only formats were reported.")
+        return
+
+    print(
+        f"{'Format':<8} {'Codec':<14} {'Bitrate':<10} "
+        f"{'Container':<10} {'Note':<24} Selected"
+    )
+
+    for audio in report.formats:
+        bitrate = (
+            f"{audio.bitrate:.1f}"
+            if audio.bitrate is not None
+            else "-"
+        )
+        marker = (
+            "*"
+            if audio.format_id == report.selected_format_id
+            else ""
+        )
+
+        print(
+            f"{audio.format_id:<8} "
+            f"{audio.codec or '-':<14} "
+            f"{bitrate:<10} "
+            f"{audio.extension:<10} "
+            f"{audio.note or '':<24} "
+            f"{marker}"
+        )
+
+    selected = next(
+        (
+            audio
+            for audio in report.formats
+            if audio.format_id == report.selected_format_id
+        ),
+        None,
+    )
+
+    if selected is not None:
+        bitrate = (
+            f"{selected.bitrate:.1f} kbps"
+            if selected.bitrate is not None
+            else "unknown bitrate"
+        )
+        print()
+        print(
+            f"Selected by bestaudio: {selected.format_id} "
+            f"({selected.codec}, {bitrate})"
+        )
+
+    highest = report.formats[0]
+
+    if highest.bitrate is not None:
+        print(
+            f"Highest bitrate:       {highest.format_id} "
+            f"({highest.codec}, {highest.bitrate:.1f} kbps)"
+        )
+
+        if (
+            selected is not None
+            and selected.format_id != highest.format_id
+        ):
+            print(
+                "Note: bestaudio may prefer a different codec at a "
+                "similar bitrate (Opus is more efficient than AAC)."
+            )
+
+    if (
+        highest.bitrate is None
+        or highest.bitrate < 200
+    ):
+        print()
+        print(
+            "No high-bitrate (>= 200 kbps) stream was exposed. "
+            "YouTube Music Premium 'High' quality may be required."
+        )
 
 def main() -> None:
     """Run the command-line application."""
@@ -150,6 +275,10 @@ def main() -> None:
 
     if not args.url:
         parser.error("the following arguments are required: url")
+
+    if args.list_formats:
+        _print_format_audit(args)
+        return
 
     print("=" * 60)
     print("YouTube Music Downloader")

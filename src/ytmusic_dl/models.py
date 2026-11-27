@@ -146,3 +146,23 @@ class DownloadProgress:
     speed: float | None = None
     eta: float | None = None
     stage: str = "download"
+
+@dataclass(frozen=True)
+class AudioFormatInfo:
+    """One audio-only format reported by yt-dlp."""
+
+    format_id: str
+    extension: str
+    codec: str | None = None
+    bitrate: float | None = None
+    sample_rate: float | None = None
+    note: str | None = None
+    protocol: str | None = None
+
+@dataclass(frozen=True)
+class AudioFormatReport:
+    """Available audio formats and the one bestaudio selected."""
+
+    title: str
+    formats: list[AudioFormatInfo]
+    selected_format_id: str | None = None

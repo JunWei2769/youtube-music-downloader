@@ -188,7 +188,7 @@ The downloader supports five output formats plus a source-preserving mode:
 - M4A
 - Source (no re-encoding)
 
-Converted formats are processed through FFmpeg and receive the same metadata and thumbnail pipeline. Source mode keeps the original stream as `yt-dlp` downloaded it.
+Converted formats are processed through FFmpeg and receive the same metadata and thumbnail pipeline. Source mode keeps the original stream as `yt-dlp` downloaded it. When the downloaded source already uses the requested codec, the audio is stream-copied instead of re-encoded: Opus sources are remuxed to `.opus`, and AAC sources are kept as `.m4a`. MP3, FLAC, and WAV always transcode.
 
 ### Download as MP3
 
@@ -240,7 +240,7 @@ ytmusic-dl \
   --audio-format m4a
 ```
 
-M4A output uses AAC at 256 kbps and supports embedded metadata and album artwork.
+M4A output uses AAC at 256 kbps when transcoding, and supports embedded metadata and album artwork. When the selected source is already AAC/M4A, it is stream-copied instead.
 
 ### Download as source (no re-encoding)
 
@@ -255,8 +255,31 @@ Source mode keeps the best original audio stream in its native container, usuall
 Conversion quality is fixed per format:
 
 - MP3 — V0 variable bitrate
-- Opus — 160 kbps
-- M4A — 256 kbps AAC
+- Opus — 160 kbps when transcoding, or a lossless remux from an Opus source
+- M4A — 256 kbps AAC when transcoding, or a copy of an AAC source
+
+### Check available audio formats
+
+List the audio-only streams `yt-dlp` can see for a URL, and which one `bestaudio` selects:
+
+```bash
+ytmusic-dl --list-formats "PLAYLIST_OR_TRACK_URL"
+```
+
+Example:
+
+```text
+Format   Codec          Bitrate    Container  Note                     Selected
+140      mp4a.40.2      129.5      m4a        medium
+251      opus           128.9      webm       medium                   *
+250      opus           61.1       webm       low
+249      opus           46.2       webm       low
+
+Selected by bestaudio: 251 (opus, 128.9 kbps)
+Highest bitrate:       140 (mp4a.40.2, 129.5 kbps)
+```
+
+If no stream above 200 kbps is exposed, YouTube Music Premium's "High" quality may be required. Cookies are used automatically, like normal downloads.
 
 ### Custom output directory
 
@@ -447,6 +470,7 @@ This command is useful for troubleshooting browser profile and cookie detection 
 | `--audio-format FORMAT` | Audio format: `mp3`, `opus`, `flac`, `wav`, `m4a`, or `source` |
 | `--browser BROWSER`     | Browser to use for YouTube cookies                                  |
 | `--list-browsers`       | List detected browsers and YouTube cookie availability              |
+| `--list-formats`        | List available audio formats and the selected `bestaudio` format     |
 | `--no-lyrics`           | Disable lyrics downloading                                          |
 | `--lyrics-confidence LEVEL` | Minimum lyrics confidence to save: `high` (default) or `medium` |
 | `--no-thumbnail`        | Disable thumbnail embedding                                         |
@@ -629,7 +653,7 @@ uv run pytest -v
 Current test status:
 
 ```text
-234 passed
+242 passed
 ```
 
 The GUI tests are skipped when PySide6 is not installed.
