@@ -319,7 +319,7 @@ def _apply_download_metadata(
                 track.artist,
             )
 
-    if info.get("duration") is not None:
+    if track.duration is None and info.get("duration") is not None:
         try:
             track.duration = float(info["duration"])
         except (TypeError, ValueError):

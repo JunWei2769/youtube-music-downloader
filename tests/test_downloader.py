@@ -611,3 +611,17 @@ def test_apply_download_metadata_cleans_channel_name() -> None:
     )
 
     assert track.artist == "单依纯"
+
+def test_apply_download_metadata_keeps_corrected_duration() -> None:
+    """Do not overwrite a duration the user corrected."""
+
+    track = Track(
+        playlist_index=1,
+        title="Song",
+        artist="Artist",
+        duration=210,
+    )
+
+    _apply_download_metadata(track, {"duration": 249})
+
+    assert track.duration == 210

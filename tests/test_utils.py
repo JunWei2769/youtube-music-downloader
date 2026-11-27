@@ -1,6 +1,9 @@
+import pytest
+
 from ytmusic_dl.utils import (
     build_lyrics_filename,
     clean_artist_name,
+    parse_duration,
     sanitize_filename,
     strip_artist_prefix,
 )
@@ -70,3 +73,21 @@ def test_build_lyrics_filename_without_artist() -> None:
     """Omit the artist prefix when no artist is known."""
 
     assert build_lyrics_filename("Test/Song") == "Test_Song"
+
+def test_parse_duration() -> None:
+    """Parse seconds and clock formats."""
+
+    assert parse_duration("210") == 210
+    assert parse_duration("210.5") == 210.5
+    assert parse_duration("3:30") == 210
+    assert parse_duration("1:02:03") == 3723
+    assert parse_duration("") is None
+
+    with pytest.raises(ValueError):
+        parse_duration("abc")
+
+    with pytest.raises(ValueError):
+        parse_duration("-1")
+
+    with pytest.raises(ValueError):
+        parse_duration("1:2:3:4")

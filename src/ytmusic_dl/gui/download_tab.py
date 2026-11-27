@@ -27,7 +27,7 @@ from ytmusic_dl.downloader import AUDIO_FORMATS
 from ytmusic_dl.gui.download_worker import DownloadWorker
 from ytmusic_dl.gui.extract_worker import ExtractWorker
 from ytmusic_dl.models import DownloadProgress, Track
-from ytmusic_dl.utils import format_duration
+from ytmusic_dl.utils import format_duration, parse_duration
 
 DEFAULT_OUTPUT = Path("downloads")
 
@@ -197,10 +197,11 @@ class DownloadTab(QWidget):
         layout.addLayout(selection_row)
 
         metadata_hint = QLabel(
-            "Double-click Title, Artist, or Album to correct "
-            "metadata before downloading. This also improves "
-            "lyrics matching; the Lyrics column suggests provider "
-            "metadata when a match is rejected."
+            "Double-click Title, Artist, Album, or Duration to "
+            "correct metadata before downloading. This also "
+            "improves lyrics matching. The tab shows the YouTube "
+            "video length; enter the track length if you know it, "
+            "for example 3:30."
         )
         metadata_hint.setWordWrap(True)
         metadata_hint.setStyleSheet(
@@ -244,9 +245,9 @@ class DownloadTab(QWidget):
 
         if duration_header is not None:
             duration_header.setToolTip(
-                "Video duration from YouTube. Official videos can be "
-                "longer than the track; lyrics matching allows a "
-                "small difference."
+                "Video duration from YouTube. Double-click to enter "
+                "the track length (for example 3:30); lyrics "
+                "matching uses this value."
             )
 
         self.track_table.itemChanged.connect(
@@ -516,7 +517,7 @@ class DownloadTab(QWidget):
                     | Qt.ItemFlag.ItemIsSelectable
                 )
 
-                if column in (2, 3, 4):
+                if column in (2, 3, 4, 5):
                     flags |= Qt.ItemFlag.ItemIsEditable
                     item.setToolTip(
                         "Double-click to correct this metadata."
@@ -598,6 +599,28 @@ class DownloadTab(QWidget):
             track.artist = text or None
         elif item.column() == 4:
             track.album = text or None
+        elif item.column() == 5:
+            try:
+                seconds = parse_duration(item.text())
+            except ValueError as error:
+                self._populating = True
+                item.setText(
+                    format_duration(track.duration)
+                )
+                self._populating = False
+
+                QMessageBox.warning(
+                    self,
+                    "Invalid duration",
+                    str(error),
+                )
+                return
+
+            track.duration = seconds
+
+            self._populating = True
+            item.setText(format_duration(seconds))
+            self._populating = False
 
     def _on_track_complete(self, track, result) -> None:
         """Show the per-track lyrics result in the table."""

@@ -482,20 +482,34 @@ def test_download_tab_edits_metadata_and_shows_lyrics_status(
     title_item = tab.track_table.item(0, 2)
     artist_item = tab.track_table.item(0, 3)
     duration_item = tab.track_table.item(0, 5)
+    lyrics_item = tab.track_table.item(0, 6)
 
     assert title_item.flags() & Qt.ItemFlag.ItemIsEditable
     assert artist_item.flags() & Qt.ItemFlag.ItemIsEditable
+    assert duration_item.flags() & Qt.ItemFlag.ItemIsEditable
     assert not (
-        duration_item.flags() & Qt.ItemFlag.ItemIsEditable
+        lyrics_item.flags() & Qt.ItemFlag.ItemIsEditable
     )
 
     tab.track_table.item(0, 2).setText("山丘")
     tab.track_table.item(0, 3).setText("李宗盛")
     tab.track_table.item(0, 4).setText("山丘")
+    tab.track_table.item(0, 5).setText("3:30")
 
     assert tracks[0].title == "山丘"
     assert tracks[0].artist == "李宗盛"
     assert tracks[0].album == "山丘"
+    assert tracks[0].duration == 210
+    assert tab.track_table.item(0, 5).text() == "3:30"
+
+    with patch(
+        "ytmusic_dl.gui.download_tab.QMessageBox.warning"
+    ) as mock_warning:
+        tab.track_table.item(0, 5).setText("abc")
+
+    assert tracks[0].duration == 210
+    assert tab.track_table.item(0, 5).text() == "3:30"
+    mock_warning.assert_called_once()
 
     tab._on_track_complete(
         tracks[0],

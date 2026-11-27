@@ -51,6 +51,36 @@ def format_duration(seconds: float | None) -> str:
 
     return f"{minutes}:{seconds:02d}"
 
+def parse_duration(value: str) -> float | None:
+    """Parse seconds, M:SS, or H:MM:SS into seconds."""
+
+    text = value.strip()
+
+    if not text:
+        return None
+
+    parts = text.split(":")
+
+    if len(parts) > 3:
+        raise ValueError("Use seconds, M:SS, or H:MM:SS.")
+
+    try:
+        numbers = [float(part) for part in parts]
+    except ValueError:
+        raise ValueError(
+            "Use seconds, M:SS, or H:MM:SS."
+        ) from None
+
+    if any(number < 0 for number in numbers):
+        raise ValueError("Duration cannot be negative.")
+
+    total = 0.0
+
+    for number in numbers:
+        total = total * 60 + number
+
+    return total
+
 def clean_artist_name(
     artist: str | None,
 ) -> str | None:
