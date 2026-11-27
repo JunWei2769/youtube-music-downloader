@@ -150,3 +150,57 @@ def test_extract_worker_reports_empty_results() -> None:
         worker.run()
 
     assert failed == ["No tracks found for that URL."]
+
+def test_worker_runs_lyrics_only(
+    tmp_path: Path,
+) -> None:
+    """Write lyrics for existing audio without downloading."""
+
+    track = make_track()
+    result = make_result(tmp_path)
+
+    worker = DownloadWorker(
+        tracks=[track],
+        output_directory=tmp_path,
+        audio_format="mp3",
+        lyrics_only=True,
+        lyrics_cache={},
+    )
+
+    completed: list[PlaylistResult] = []
+    worker.completed.connect(completed.append)
+
+    with patch(
+        "ytmusic_dl.gui.download_worker.process_lyrics_only",
+        return_value=result,
+    ) as mock_process:
+        worker.run()
+
+    assert completed == [result]
+
+    call = mock_process.call_args
+
+    assert call.args[0] == [track]
+    assert call.kwargs["audio_format"] == "mp3"
+    assert call.kwargs["overwrite"] is False
+    assert call.kwargs["lyrics_cache"] == {}
+
+def test_worker_passes_ipv4_preference(
+    tmp_path: Path,
+) -> None:
+    """Forward the IPv4 override to the pipeline."""
+
+    worker = DownloadWorker(
+        tracks=[make_track()],
+        output_directory=tmp_path,
+        audio_format="mp3",
+        forceipv4=False,
+    )
+
+    with patch(
+        "ytmusic_dl.gui.download_worker.process_playlist",
+        return_value=make_result(tmp_path),
+    ) as mock_process:
+        worker.run()
+
+    assert mock_process.call_args.kwargs["forceipv4"] is False

@@ -3,6 +3,7 @@ import os
 import platform
 import shutil
 import tempfile
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -27,8 +28,34 @@ FIREFOX_BROWSERS = {
 # cookie databases under Storage/ext, which can be newer than the
 # profile database. These caches point yt-dlp at a temporary profile
 # that contains only the primary database.
-_COOKIE_PROFILE_CACHE: dict[str, str] = {}
+#
+# The snapshot is refreshed when the source database changes or when it
+# is older than the TTL, so long-running GUI sessions do not keep using
+# stale cookies.
+_COOKIE_PROFILE_TTL_SECONDS = 300
+
+_CookieCacheEntry = tuple[
+    str,
+    float,
+    int,
+    tempfile.TemporaryDirectory,
+]
+
+_COOKIE_PROFILE_CACHE: dict[str, _CookieCacheEntry] = {}
 _COOKIE_TEMP_DIRS: list[tempfile.TemporaryDirectory] = []
+
+
+def _cleanup_cookie_temp_dirs() -> None:
+    """Remove every temporary cookie profile."""
+
+    for temp_dir in _COOKIE_TEMP_DIRS:
+        temp_dir.cleanup()
+
+    _COOKIE_TEMP_DIRS.clear()
+    _COOKIE_PROFILE_CACHE.clear()
+
+
+atexit.register(_cleanup_cookie_temp_dirs)
 
 
 @dataclass(frozen=True)
@@ -260,15 +287,35 @@ def _prepare_cookie_profile(
 ) -> str:
     """Return a profile path containing only the primary cookie DB."""
 
-    cached = _COOKIE_PROFILE_CACHE.get(str(browser.path))
-
-    if cached is not None:
-        return cached
-
+    cache_key = str(browser.path)
     database = _primary_cookie_database(browser.path)
 
     if database is None:
         return str(browser.path)
+
+    try:
+        database_mtime = database.stat().st_mtime_ns
+    except OSError:
+        return str(browser.path)
+
+    cached = _COOKIE_PROFILE_CACHE.get(cache_key)
+
+    if cached is not None:
+        cached_path, created_at, mtime, cached_temp_dir = cached
+        is_fresh = (
+            time.monotonic() - created_at
+            < _COOKIE_PROFILE_TTL_SECONDS
+        )
+
+        if is_fresh and mtime == database_mtime:
+            return cached_path
+
+        _COOKIE_PROFILE_CACHE.pop(cache_key, None)
+
+        if cached_temp_dir in _COOKIE_TEMP_DIRS:
+            _COOKIE_TEMP_DIRS.remove(cached_temp_dir)
+
+        cached_temp_dir.cleanup()
 
     temp_dir = tempfile.TemporaryDirectory(
         prefix="ytmusic_dl_cookies_"
@@ -291,9 +338,13 @@ def _prepare_cookie_profile(
                 root / "Local State",
             )
 
-    atexit.register(temp_dir.cleanup)
     _COOKIE_TEMP_DIRS.append(temp_dir)
-    _COOKIE_PROFILE_CACHE[str(browser.path)] = str(profile)
+    _COOKIE_PROFILE_CACHE[cache_key] = (
+        str(profile),
+        time.monotonic(),
+        database_mtime,
+        temp_dir,
+    )
 
     return str(profile)
 

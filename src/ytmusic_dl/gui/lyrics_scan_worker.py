@@ -28,6 +28,12 @@ class LyricsScanWorker(QThread):
         self._tracks = list(tracks)
         self._cancel_event = threading.Event()
 
+    @property
+    def tracks(self) -> list[Track]:
+        """Return the tracks this worker will scan."""
+
+        return list(self._tracks)
+
     def cancel(self) -> None:
         """Ask the worker to stop after the current track."""
 

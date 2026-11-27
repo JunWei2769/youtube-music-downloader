@@ -437,7 +437,7 @@ def test_download_tab_reviews_and_selects_tracks(
     assert tab.start_button.isEnabled()
     assert "2 of 2 selected" in tab.selection_label.text()
 
-    tab._checkboxes[id(tracks[0])].setChecked(False)
+    tab.track_table.checkboxes[id(tracks[0])].setChecked(False)
 
     assert "1 of 2 selected" in tab.selection_label.text()
     assert tab._selected_tracks() == [tracks[1]]
@@ -501,7 +501,7 @@ def test_download_tab_edits_metadata_and_shows_lyrics_status(
     assert tab.track_table.item(0, 5).text() == "3:30"
 
     with patch(
-        "ytmusic_dl.gui.download_tab.QMessageBox.warning"
+        "ytmusic_dl.gui.track_table.QMessageBox.warning"
     ) as mock_warning:
         tab.track_table.item(0, 5).setText("abc")
 
@@ -569,11 +569,10 @@ def test_download_tab_shows_scanned_lyrics(
         score=0.85,
     )
 
-    tab._on_lyrics_scanned(
-        tab._scan_generation,
+    tab.track_table.update_lyrics(
         track,
         candidate,
-        None,
+        "",
     )
 
     cell = tab.track_table.item(0, 6).text()
@@ -604,11 +603,10 @@ def test_download_tab_shows_missing_lyrics(qt_app, app_settings) -> None:
     track = make_track(1)
     tab._on_tracks_loaded([track])
 
-    tab._on_lyrics_scanned(
-        tab._scan_generation,
+    tab.track_table.update_lyrics(
         track,
         None,
-        None,
+        "",
     )
 
     assert tab.track_table.item(0, 6).text() == "Not found"
@@ -634,11 +632,10 @@ def test_download_tab_rescans_after_metadata_edit(
     tab.track_table.item(0, 3).setText("李宗盛")
 
     assert tab.track_table.item(0, 6).text() == "Re-checking…"
-    assert id(track) in tab._pending_rescans
-    assert tab._rescan_timer.isActive()
+    assert tab.scan.is_rescan_pending(track)
+    assert tab.scan.rescan_timer.isActive()
 
-    tab._rescan_timer.stop()
-    tab._pending_rescans.clear()
+    tab.scan.stop_rescans()
     tab.close()
 
     assert qt_app is not None
@@ -650,7 +647,7 @@ def test_download_tab_auto_scans_after_load(
     """Start a lyrics scan when track loading finishes."""
 
     with patch(
-        "ytmusic_dl.gui.download_tab.LyricsScanWorker"
+        "ytmusic_dl.gui.lyrics_scan.LyricsScanWorker"
     ) as mock_worker:
         tab = DownloadTab(
             settings=app_settings,
@@ -658,7 +655,7 @@ def test_download_tab_auto_scans_after_load(
         )
 
         track = make_track(1)
-        tab._populate_tracks([track])
+        tab.track_table.set_tracks([track])
         tab._on_load_finished()
 
         mock_worker.assert_called_once()
@@ -667,5 +664,208 @@ def test_download_tab_auto_scans_after_load(
 
         tab._stop_lyrics_scan()
         tab.close()
+
+    assert qt_app is not None
+
+def test_download_tab_persists_force_ipv4(
+    qt_app,
+    app_settings,
+) -> None:
+    """Remember the IPv4 preference."""
+
+    tab = DownloadTab(settings=app_settings, auto_scan_lyrics=False)
+    assert tab.force_ipv4_check.isChecked()
+
+    tab.force_ipv4_check.setChecked(False)
+    tab.save_state()
+
+    restored = DownloadTab(
+        settings=app_settings,
+        auto_scan_lyrics=False,
+    )
+
+    assert not restored.force_ipv4_check.isChecked()
+
+    restored.close()
+
+    assert qt_app is not None
+
+def test_download_tab_scans_only_selected_tracks(
+    qt_app,
+    app_settings,
+) -> None:
+    """Scan the checked tracks only."""
+
+    tab = DownloadTab(
+        settings=app_settings,
+        auto_scan_lyrics=False,
+    )
+
+    tracks = [make_track(1), make_track(2)]
+    tab.track_table.set_tracks(tracks)
+    tab.track_table.checkboxes[id(tracks[0])].setChecked(False)
+
+    with patch(
+        "ytmusic_dl.gui.lyrics_scan.LyricsScanWorker"
+    ) as mock_worker:
+        tab._start_lyrics_scan()
+
+    mock_worker.assert_called_once()
+    assert mock_worker.call_args.args[0] == [tracks[1]]
+
+    tab.scan.stop()
+    tab.close()
+
+    assert qt_app is not None
+
+def test_download_tab_lyrics_only_passes_scan_cache(
+    qt_app,
+    app_settings,
+    tmp_path,
+) -> None:
+    """Reuse scan results and request a lyrics-only run."""
+
+    tab = DownloadTab(
+        settings=app_settings,
+        auto_scan_lyrics=False,
+    )
+
+    track = make_track(1)
+    tab.track_table.set_tracks([track])
+    tab.output_input.setText(str(tmp_path))
+
+    candidate = make_candidate()
+    tab.track_table.update_lyrics(track, candidate, "")
+
+    # The controller keeps the cache; seed it through a scan result.
+    tab.scan._tracks = [track]
+    tab.scan._results[id(track)] = candidate
+
+    with patch(
+        "ytmusic_dl.gui.download_tab.DownloadWorker"
+    ) as mock_worker:
+        tab._start(lyrics_only=True)
+
+    kwargs = mock_worker.call_args.kwargs
+
+    assert kwargs["lyrics_only"] is True
+    assert kwargs["lyrics_cache"] == {
+        track.metadata_signature(): candidate.result
+    }
+    assert kwargs["forceipv4"] is True
+    mock_worker.return_value.start.assert_called_once()
+
+    tab._worker = None
+    tab.close()
+
+    assert qt_app is not None
+
+def test_download_tab_clears_cached_result_after_edit(
+    qt_app,
+    app_settings,
+) -> None:
+    """A metadata edit invalidates the cached scan result."""
+
+    tab = DownloadTab(
+        settings=app_settings,
+        auto_scan_lyrics=False,
+    )
+
+    track = make_track(1)
+    tab.track_table.set_tracks([track])
+
+    candidate = make_candidate()
+    tab.scan._tracks = [track]
+    tab.scan._results[id(track)] = candidate
+
+    tab.track_table.item(0, 3).setText("李宗盛")
+
+    assert tab.scan.scan_cache() == {}
+
+    tab.scan.stop_rescans()
+    tab.close()
+
+    assert qt_app is not None
+
+def test_format_audit_dialog_marks_selected_stream(
+    qt_app,
+) -> None:
+    """Bold the stream that bestaudio selects."""
+
+    from ytmusic_dl.gui.format_audit import FormatAuditDialog
+    from ytmusic_dl.models import AudioFormatInfo, AudioFormatReport
+
+    report = AudioFormatReport(
+        title="Test Song",
+        formats=[
+            AudioFormatInfo(
+                format_id="251",
+                extension="webm",
+                codec="opus",
+                bitrate=129.0,
+                sample_rate=48000,
+                note="medium",
+                protocol="https",
+            ),
+            AudioFormatInfo(
+                format_id="140",
+                extension="m4a",
+                codec="mp4a.40.2",
+                bitrate=129.5,
+                sample_rate=44100,
+                note="medium",
+                protocol="https",
+            ),
+        ],
+        selected_format_id="251",
+    )
+
+    dialog = FormatAuditDialog(report)
+
+    assert dialog.table.rowCount() == 2
+    assert dialog.table.item(0, 6).text() == "yes"
+    assert dialog.table.item(0, 1).font().bold()
+    assert not dialog.table.item(1, 1).font().bold()
+    texts = [
+        label.text()
+        for label in dialog.findChildren(QLabel)
+    ]
+
+    assert any("Premium" in text for text in texts)
+
+    dialog.close()
+
+    assert qt_app is not None
+
+def test_download_tab_stops_lyrics_scan(
+    qt_app,
+    app_settings,
+) -> None:
+    """Turn the scan button into a stop control."""
+
+    tab = DownloadTab(
+        settings=app_settings,
+        auto_scan_lyrics=False,
+    )
+    tab._on_tracks_loaded([make_track(1)])
+
+    with patch(
+        "ytmusic_dl.gui.lyrics_scan.LyricsScanWorker"
+    ) as mock_worker:
+        tab._on_scan_button_clicked()
+
+        assert tab.scan.is_scanning
+        assert tab.scan_button.text().startswith("Stop scanning")
+
+        tab._on_scan_progress(1, 3)
+        assert "1/3" in tab.scan_button.text()
+
+        tab._on_scan_button_clicked()
+
+    assert not tab.scan.is_scanning
+    assert tab.scan_button.text() == "Find lyrics"
+    mock_worker.return_value.cancel.assert_called_once()
+
+    tab.close()
 
     assert qt_app is not None

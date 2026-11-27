@@ -20,5 +20,5 @@ output_directory = Path("downloads/test")
 
 audio_path = download_track(track, output_directory)
 
-print(f"\nDownloaded successfully:")
+print("\nDownloaded successfully:")
 print(audio_path)

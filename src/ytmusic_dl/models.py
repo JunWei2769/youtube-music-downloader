@@ -28,6 +28,18 @@ class Track:
     audio_path: Path | None = None
     lyrics_path: Path | None = None
 
+    def metadata_signature(
+        self,
+    ) -> tuple[str, str, str, float | None]:
+        """Return a key for cached lyrics lookups."""
+
+        return (
+            self.title.strip().casefold(),
+            (self.artist or "").strip().casefold(),
+            (self.album or "").strip().casefold(),
+            self.duration,
+        )
+
 @dataclass
 class Lyrics:
     """Represents lyrics retrieved from a lyrics provider."""

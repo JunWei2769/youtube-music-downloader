@@ -7,7 +7,7 @@ from PySide6.QtCore import QThread, Signal
 
 from ytmusic_dl.browser import find_browser
 from ytmusic_dl.models import Track
-from ytmusic_dl.pipeline import process_playlist
+from ytmusic_dl.pipeline import LyricsCache, process_lyrics_only, process_playlist
 
 class DownloadWorker(QThread):
     """Download and process a reviewed list of tracks."""
@@ -28,6 +28,10 @@ class DownloadWorker(QThread):
         download_lyrics: bool = True,
         download_thumbnails: bool = True,
         lyrics_min_confidence: str = "high",
+        lyrics_cache: LyricsCache | None = None,
+        lyrics_only: bool = False,
+        overwrite_lyrics: bool = False,
+        forceipv4: bool = True,
         parent=None,
     ) -> None:
         super().__init__(parent)
@@ -39,6 +43,10 @@ class DownloadWorker(QThread):
         self._download_lyrics = download_lyrics
         self._download_thumbnails = download_thumbnails
         self._lyrics_min_confidence = lyrics_min_confidence
+        self._lyrics_cache = lyrics_cache
+        self._lyrics_only = lyrics_only
+        self._overwrite_lyrics = overwrite_lyrics
+        self._forceipv4 = forceipv4
         self._cancel_event = threading.Event()
 
     def cancel(self) -> None:
@@ -50,7 +58,7 @@ class DownloadWorker(QThread):
         try:
             browser = None
 
-            if self._browser_name:
+            if self._browser_name and not self._lyrics_only:
                 browser = find_browser(self._browser_name)
 
                 if browser is None:
@@ -64,21 +72,38 @@ class DownloadWorker(QThread):
                     f"Using {browser.name} browser cookies"
                 )
 
-            result = process_playlist(
-                self._tracks,
-                self._output_directory,
-                browser=browser,
-                download_lyrics=self._download_lyrics,
-                download_thumbnails=self._download_thumbnails,
-                audio_format=self._audio_format,
-                lyrics_min_confidence=(
-                    self._lyrics_min_confidence
-                ),
-                log=self.log.emit,
-                progress=self.progress.emit,
-                cancel_event=self._cancel_event,
-                on_track_complete=self.track_complete.emit,
-            )
+            if self._lyrics_only:
+                result = process_lyrics_only(
+                    self._tracks,
+                    self._output_directory,
+                    audio_format=self._audio_format,
+                    lyrics_min_confidence=(
+                        self._lyrics_min_confidence
+                    ),
+                    overwrite=self._overwrite_lyrics,
+                    log=self.log.emit,
+                    cancel_event=self._cancel_event,
+                    on_track_complete=self.track_complete.emit,
+                    lyrics_cache=self._lyrics_cache,
+                )
+            else:
+                result = process_playlist(
+                    self._tracks,
+                    self._output_directory,
+                    browser=browser,
+                    download_lyrics=self._download_lyrics,
+                    download_thumbnails=self._download_thumbnails,
+                    audio_format=self._audio_format,
+                    lyrics_min_confidence=(
+                        self._lyrics_min_confidence
+                    ),
+                    log=self.log.emit,
+                    progress=self.progress.emit,
+                    cancel_event=self._cancel_event,
+                    on_track_complete=self.track_complete.emit,
+                    lyrics_cache=self._lyrics_cache,
+                    forceipv4=self._forceipv4,
+                )
 
         except Exception as error:
             self.failed.emit(str(error))

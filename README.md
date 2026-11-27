@@ -15,13 +15,15 @@ A lightweight CLI tool for downloading audio from YouTube Music playlists and in
 - Validate lyrics matches using title, artist, album, and duration
 - Prefer synchronized lyrics when available
 - Automatically skip existing tracks
+- Write missing lyrics for already-downloaded audio
+- Audit available audio streams and the selected `bestaudio` format
 - Automatic browser cookie detection
 - Select a specific browser for YouTube cookies
 - Inspect detected browsers and cookie availability
 - Support custom output directories
 - Support Unicode filenames
 - Simple download summary
-- Optional PySide6 desktop interface (preview)
+- PySide6 desktop application for macOS and Linux
 
 ## Requirements
 
@@ -397,6 +399,16 @@ Files are written to `downloads/lyrics/` by default as `<Artist> - <Title>.lrc`.
 | `-v, --verbose`          | Show provider diagnostics                            |
 | `--overwrite`            | Replace an existing lyrics file                      |
 
+### Write missing lyrics for already-downloaded audio
+
+If the audio files exist but some `.lrc` files are missing — for example after correcting metadata, or after downloading with `--no-lyrics` — pass `--lyrics-only`:
+
+```bash
+ytmusic-dl "PLAYLIST_URL" --lyrics-only
+```
+
+The playlist or track URL is still read to obtain titles and artists, but no audio is downloaded and no browser cookies are needed. The output directory and `--audio-format` decide which existing audio file each track is matched to; if the requested format is not found, a source-format file is used. Existing `.lrc` files are left untouched, and per-track results are reported as saved, not found, or skipped because the audio is missing.
+
 ## Browser Cookies
 
 The downloader can use cookies from supported browsers through `yt-dlp`.
@@ -468,6 +480,8 @@ This command is useful for troubleshooting browser profile and cookie detection 
 | ----------------------- | ------------------------------------------------------------------- |
 | `--output DIR`          | Output directory. Default: `downloads`                              |
 | `--audio-format FORMAT` | Audio format: `mp3`, `opus`, `flac`, `wav`, `m4a`, or `source` |
+| `--lyrics-only`         | Write missing lyrics for existing audio; do not download audio       |
+| `--no-force-ipv4`       | Allow IPv6 connections (IPv4 is forced by default)                   |
 | `--browser BROWSER`     | Browser to use for YouTube cookies                                  |
 | `--list-browsers`       | List detected browsers and YouTube cookie availability              |
 | `--list-formats`        | List available audio formats and the selected `bestaudio` format     |
@@ -488,7 +502,7 @@ ytmusic-dl \
   --no-thumbnail
 ```
 
-## Desktop Application (preview)
+## Desktop Application
 
 The desktop interface is optional and requires PySide6. Install the GUI extra:
 
@@ -509,15 +523,23 @@ uv tool install ".[gui]"
 ytmusic-dl-gui
 ```
 
-The preview has three tabs: **Music Download**, **Lyrics Only**, and **Settings**.
+The application has three tabs: **Music Download**, **Lyrics Only**, and **Settings**.
 
-- **Music Download** is functional: load a playlist or track URL, review the retrieved tracks in a table, correct Title/Artist/Album/Duration inline when an uploader channel is not the artist, deselect anything you do not want, then download with your chosen format (including `source` and `m4a`), browser cookies, lyrics and thumbnail options, live per-track progress, cancellation, a download log, and a source/output quality report. Lyrics availability is checked automatically after loading, and editing any metadata re-checks that track after a short delay. The Lyrics column shows whether lyrics were saved, found at which confidence, skipped by confidence, or not matched, including the provider's suggested artist/title when a match is rejected.
+![Music Download tab](docs/screenshots/music-download.png)
+
+![Lyrics Only tab](docs/screenshots/lyrics-only.png)
+
+![Audio format audit](docs/screenshots/format-audit.png)
+
+- **Music Download** is functional: load a playlist or track URL, review the retrieved tracks in a table, correct Title/Artist/Album/Duration inline when an uploader channel is not the artist, deselect anything you do not want, then download with your chosen format (including `source` and `m4a`), browser cookies, lyrics and thumbnail options, live per-track progress, cancellation, a download log, and a source/output quality report. Lyrics availability is checked automatically after loading, and editing any metadata re-checks that track after a short delay. The scan covers the selected tracks, can be stopped with the same button, and its results are reused by the download when the metadata has not changed. The Lyrics column shows whether lyrics were saved, found at which confidence, skipped by confidence, or not matched, including the provider's suggested artist/title when a match is rejected.
+
+  **Formats** audits the audio streams YouTube exposes for the current URL, marks the stream `bestaudio` selects, and warns when no stream reaches 200 kbps. **Lyrics for files** writes missing `.lrc` files for tracks whose audio has already been downloaded, without downloading audio again. **Force IPv4** is enabled by default and can be turned off for IPv6-only or dual-stack networks.
 
   The Duration column is the YouTube video length; `yt-dlp` does not expose the album-track length. Double-click it to enter the true track length (for example `3:30` or `210`) when an official video is longer than the song. Lyrics matching uses the corrected value.
 - **Lyrics Only** is functional: search by title and artist or by YouTube Music URL, review every candidate with confidence and match reasons, preview synchronized or plain lyrics, and save to an `.lrc` file. Rejected candidates cannot be saved, and medium/low matches ask for confirmation.
 - **Settings** reports the detected FFmpeg, FFprobe, and Deno locations and versions, including installations outside `PATH`. Detected tool directories are added to `PATH` at startup so Finder launches work. Missing tools show their install command (for example, `brew install ffmpeg` on macOS).
 
-Window size, the active tab, and the download and lyrics defaults are remembered between launches. The output folder can be opened directly, and a native About dialog is available from the Help menu.
+Window size, the active tab, and the download and lyrics defaults (including the IPv4 preference) are remembered between launches. The output folder can be opened directly, and a native About dialog is available from the Help menu.
 
 PySide6 6.12 has been verified with Python 3.14 on macOS. Fedora testing is still pending.
 
@@ -647,13 +669,14 @@ This makes it safe to run the same playlist again.
 Run the complete test suite:
 
 ```bash
+uv run ruff check src tests
 uv run pytest -v
 ```
 
 Current test status:
 
 ```text
-242 passed
+259 passed
 ```
 
 The GUI tests are skipped when PySide6 is not installed.
@@ -670,7 +693,7 @@ The test suite covers:
 - Metadata embedding
 - Thumbnail embedding
 - Download pipeline behavior
-- Desktop window, lyrics search/preview/save, download progress/cancellation, and external tool detection
+- Desktop window, lyrics search/preview/save, download progress/cancellation, scan cancellation and caching, format audit, and external tool detection
 
 The pipeline tests do not depend on a real browser profile or usable YouTube cookies, so the suite runs the same way on any machine.
 
@@ -703,6 +726,10 @@ Check for whitespace errors:
 ```bash
 git diff --check
 ```
+
+## License
+
+MIT. See [LICENSE](LICENSE).
 
 ## Legal Notice
 

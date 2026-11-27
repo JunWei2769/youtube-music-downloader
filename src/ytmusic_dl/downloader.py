@@ -498,6 +498,7 @@ def download_track(
     progress: ProgressCallback | None = None,
     log: LogCallback | None = None,
     cancel_event: threading.Event | None = None,
+    forceipv4: bool = True,
 ) -> DownloadInfo:
     """Download a single track in the requested audio format."""
 
@@ -554,7 +555,7 @@ def download_track(
         "noplaylist": True,
         "format": "bestaudio/best",
         "outtmpl": output_template,
-        "forceipv4": True,
+        "forceipv4": forceipv4,
     }
 
     if progress is not None or cancel_event is not None:
@@ -638,6 +639,8 @@ def download_track(
 def list_audio_formats(
     url: str,
     browser: BrowserProfile | None = None,
+    *,
+    forceipv4: bool = True,
 ) -> AudioFormatReport:
     """Return available audio-only formats and the selected one."""
 
@@ -651,6 +654,7 @@ def list_audio_formats(
                 "formats": ["missing_pot"],
             }
         },
+        "forceipv4": forceipv4,
     }
 
     if browser is not None:

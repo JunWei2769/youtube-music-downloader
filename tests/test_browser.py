@@ -6,8 +6,10 @@ from unittest.mock import MagicMock, patch
 from ytmusic_dl.browser import (
     BrowserProfile,
     _browser_has_usable_cookies,
+    _cleanup_cookie_temp_dirs,
     _detect_chromium_profiles,
     _detect_firefox_profiles,
+    _prepare_cookie_profile,
     detect_browser_profiles,
     find_browser,
     find_browser_with_cookies,
@@ -560,3 +562,51 @@ def test_find_browser_skips_browser_without_youtube_cookies() -> None:
         browser = find_browser_with_cookies()
 
     assert browser == firefox
+
+
+def test_cookie_profile_is_cached_until_database_changes(
+    tmp_path: Path,
+) -> None:
+    """Reuse the snapshot while the cookie database is unchanged."""
+
+    profile = tmp_path / "Default"
+    network = profile / "Network"
+    network.mkdir(parents=True)
+
+    database = network / "Cookies"
+    database.write_text("first", encoding="utf-8")
+
+    browser = BrowserProfile(name="chrome", path=profile)
+    first = _prepare_cookie_profile(browser)
+
+    assert _prepare_cookie_profile(browser) == first
+    assert (Path(first) / "Cookies").read_text(
+        encoding="utf-8"
+    ) == "first"
+
+    database.write_text("second", encoding="utf-8")
+    new_mtime = time.time() + 10
+    os.utime(database, (new_mtime, new_mtime))
+
+    second = _prepare_cookie_profile(browser)
+
+    assert second != first
+    assert (Path(second) / "Cookies").read_text(
+        encoding="utf-8"
+    ) == "second"
+    assert not Path(first).exists()
+
+    _cleanup_cookie_temp_dirs()
+
+
+def test_cookie_profile_reuses_source_without_database(
+    tmp_path: Path,
+) -> None:
+    """Fall back to the profile path when there is no cookie DB."""
+
+    profile = tmp_path / "Default"
+    profile.mkdir()
+
+    browser = BrowserProfile(name="chrome", path=profile)
+
+    assert _prepare_cookie_profile(browser) == str(profile)

@@ -2,23 +2,20 @@
 
 from pathlib import Path
 
-from PySide6.QtCore import QSettings, Qt, QTimer, QUrl
-from PySide6.QtGui import QBrush, QColor, QDesktopServices
+from PySide6.QtCore import QSettings, Qt, QUrl
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QFileDialog,
     QFormLayout,
     QHBoxLayout,
-    QHeaderView,
     QLabel,
     QLineEdit,
     QMessageBox,
     QPlainTextEdit,
     QProgressBar,
     QPushButton,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -26,10 +23,15 @@ from PySide6.QtWidgets import (
 from ytmusic_dl.downloader import AUDIO_FORMATS
 from ytmusic_dl.gui.download_worker import DownloadWorker
 from ytmusic_dl.gui.extract_worker import ExtractWorker
-from ytmusic_dl.gui.lyrics_scan_worker import LyricsScanWorker
-from ytmusic_dl.lyrics import confidence_at_least
+from ytmusic_dl.gui.format_audit import (
+    FormatAuditDialog,
+    FormatAuditWorker,
+)
+from ytmusic_dl.gui.lyrics_scan import LyricsScanController
+from ytmusic_dl.gui.track_table import TRACK_COLUMNS, TrackTable
 from ytmusic_dl.models import DownloadProgress, Track
-from ytmusic_dl.utils import format_duration, parse_duration
+
+__all__ = ["DownloadTab", "TRACK_COLUMNS"]
 
 DEFAULT_OUTPUT = Path("downloads")
 
@@ -53,24 +55,6 @@ BROWSERS = (
     "whale",
 )
 
-TRACK_COLUMNS = (
-    "Download",
-    "#",
-    "Title",
-    "Artist",
-    "Album",
-    "Duration",
-    "Lyrics",
-)
-
-LYRICS_COLORS = {
-    "saved": QColor("#2e7d32"),
-    "below_threshold": QColor("#b26a00"),
-    "not_found": QColor("#b00020"),
-    "error": QColor("#b00020"),
-    "off": QColor("#8a8a8a"),
-}
-
 class DownloadTab(QWidget):
     """Load a playlist, review its tracks, then download them."""
 
@@ -85,29 +69,21 @@ class DownloadTab(QWidget):
         self._settings = settings or QSettings()
         self._worker: DownloadWorker | None = None
         self._load_worker: ExtractWorker | None = None
-        self._scan_worker: LyricsScanWorker | None = None
-        self._scan_workers: list[LyricsScanWorker] = []
-        self._scan_generation = 0
-        self._scan_best: dict[int, object] = {}
-        self._scan_note: dict[int, str] = {}
-        self._edited_tracks: set[int] = set()
-        self._pending_rescans: dict[int, Track] = {}
-        self._targeted_worker: LyricsScanWorker | None = None
-        self._tracks: list[Track] = []
-        self._track_rows: dict[int, int] = {}
-        self._checkboxes: dict[int, QCheckBox] = {}
-        self._populating = False
+        self._audit_worker: FormatAuditWorker | None = None
         self._auto_scan_lyrics = auto_scan_lyrics
 
-        self._rescan_timer = QTimer(self)
-        self._rescan_timer.setSingleShot(True)
-        self._rescan_timer.setInterval(600)
-        self._rescan_timer.timeout.connect(
-            self._run_targeted_rescan
-        )
+        self.scan = LyricsScanController(self)
+        self.scan.progress.connect(self._on_scan_progress)
+        self.scan.scanned.connect(self._on_scan_result)
+        self.scan.failed.connect(self._on_scan_failed)
+        self.scan.finished.connect(self._on_scan_finished)
 
         self._build_ui()
         self._load_settings()
+
+    # ---------------------------------------------------------
+    # Interface
+    # ---------------------------------------------------------
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
@@ -132,8 +108,16 @@ class DownloadTab(QWidget):
         self.load_button = QPushButton("Load tracks")
         self.load_button.clicked.connect(self._load_tracks)
 
+        self.formats_button = QPushButton("Formats")
+        self.formats_button.setToolTip(
+            "Show the audio streams YouTube exposes for this URL."
+        )
+        self.formats_button.setEnabled(False)
+        self.formats_button.clicked.connect(self._show_formats)
+
         url_row.addWidget(self.url_input, 1)
         url_row.addWidget(self.load_button)
+        url_row.addWidget(self.formats_button)
 
         form.addRow("Playlist or track URL:", url_row)
 
@@ -183,10 +167,18 @@ class DownloadTab(QWidget):
         self.thumbnail_check = QCheckBox("Embed thumbnails")
         self.thumbnail_check.setChecked(True)
 
+        self.force_ipv4_check = QCheckBox("Force IPv4")
+        self.force_ipv4_check.setChecked(True)
+        self.force_ipv4_check.setToolTip(
+            "Disable this if YouTube downloads fail on an "
+            "IPv6-only or dual-stack network."
+        )
+
         options_row.addWidget(self.lyrics_check)
         options_row.addWidget(QLabel("Minimum confidence:"))
         options_row.addWidget(self.confidence_combo)
         options_row.addWidget(self.thumbnail_check)
+        options_row.addWidget(self.force_ipv4_check)
         options_row.addStretch(1)
 
         form.addRow("Options:", options_row)
@@ -212,13 +204,29 @@ class DownloadTab(QWidget):
         )
 
         self.scan_button = QPushButton("Find lyrics")
+        self.scan_button.setToolTip(
+            "Check lyrics availability for the selected tracks."
+        )
         self.scan_button.setEnabled(False)
-        self.scan_button.clicked.connect(self._start_lyrics_scan)
+        self.scan_button.clicked.connect(
+            self._on_scan_button_clicked
+        )
+
+        self.lyrics_only_button = QPushButton("Lyrics for files")
+        self.lyrics_only_button.setToolTip(
+            "Write missing .lrc files for tracks whose audio has "
+            "already been downloaded."
+        )
+        self.lyrics_only_button.setEnabled(False)
+        self.lyrics_only_button.clicked.connect(
+            lambda: self._start(lyrics_only=True)
+        )
 
         selection_row.addWidget(self.selection_label, 1)
         selection_row.addWidget(self.select_all_button)
         selection_row.addWidget(self.select_none_button)
         selection_row.addWidget(self.scan_button)
+        selection_row.addWidget(self.lyrics_only_button)
 
         layout.addLayout(selection_row)
 
@@ -235,54 +243,12 @@ class DownloadTab(QWidget):
         )
         layout.addWidget(metadata_hint)
 
-        self.track_table = QTableWidget(
-            0,
-            len(TRACK_COLUMNS),
+        self.track_table = TrackTable()
+        self.track_table.selection_changed.connect(
+            self._update_selection_label
         )
-        self.track_table.setHorizontalHeaderLabels(
-            TRACK_COLUMNS
-        )
-        self.track_table.setSelectionBehavior(
-            QTableWidget.SelectionBehavior.SelectRows
-        )
-        self.track_table.setSelectionMode(
-            QTableWidget.SelectionMode.SingleSelection
-        )
-        self.track_table.setEditTriggers(
-            QTableWidget.EditTrigger.DoubleClicked
-            | QTableWidget.EditTrigger.EditKeyPressed
-        )
-        self.track_table.setAlternatingRowColors(True)
-        self.track_table.setWordWrap(False)
-        self.track_table.verticalHeader().setVisible(False)
-
-        header = self.track_table.horizontalHeader()
-        header.setSectionResizeMode(
-            QHeaderView.ResizeMode.ResizeToContents
-        )
-        header.setSectionResizeMode(
-            2,
-            QHeaderView.ResizeMode.Stretch,
-        )
-        header.setSectionResizeMode(
-            0,
-            QHeaderView.ResizeMode.Fixed,
-        )
-        self.track_table.setColumnWidth(0, 80)
-
-        duration_header = self.track_table.horizontalHeaderItem(
-            5
-        )
-
-        if duration_header is not None:
-            duration_header.setToolTip(
-                "Video duration from YouTube. Double-click to enter "
-                "the track length (for example 3:30); lyrics "
-                "matching uses this value."
-            )
-
-        self.track_table.itemChanged.connect(
-            self._on_track_item_changed
+        self.track_table.metadata_edited.connect(
+            self._on_metadata_edited
         )
 
         layout.addWidget(self.track_table, 1)
@@ -330,7 +296,7 @@ class DownloadTab(QWidget):
             self._on_lyrics_toggled
         )
         self.confidence_combo.currentIndexChanged.connect(
-            self._render_all_lyrics
+            self._on_confidence_changed
         )
 
     # ---------------------------------------------------------
@@ -388,12 +354,27 @@ class DownloadTab(QWidget):
             )
         )
 
+        self.force_ipv4_check.setChecked(
+            self._settings.value(
+                "download/force_ipv4",
+                True,
+                type=bool,
+            )
+        )
+
         self._select_combo_data(
             self.confidence_combo,
             self._settings.value(
                 "download/confidence",
                 "high",
             ),
+        )
+
+        self.track_table.set_lyrics_enabled(
+            self.lyrics_check.isChecked()
+        )
+        self.track_table.set_minimum_confidence(
+            self.confidence_combo.currentData()
         )
 
     def save_state(self) -> None:
@@ -420,6 +401,10 @@ class DownloadTab(QWidget):
             self.thumbnail_check.isChecked(),
         )
         self._settings.setValue(
+            "download/force_ipv4",
+            self.force_ipv4_check.isChecked(),
+        )
+        self._settings.setValue(
             "download/confidence",
             self.confidence_combo.currentData(),
         )
@@ -429,26 +414,25 @@ class DownloadTab(QWidget):
     # ---------------------------------------------------------
 
     def _on_url_changed(self, _text: str) -> None:
+        has_url = bool(self.url_input.text().strip())
+        self.formats_button.setEnabled(
+            has_url
+            and self._audit_worker is None
+            and self._load_worker is None
+            and self._worker is None
+        )
         self._invalidate_tracks()
 
     def _invalidate_tracks(self) -> None:
         if self._load_worker is not None or self._worker is not None:
             return
 
-        if not self._tracks:
+        if not self.track_table.tracks:
             return
 
-        self._stop_lyrics_scan()
-        self._stop_targeted_scan()
-        self._scan_best.clear()
-        self._scan_note.clear()
-        self._edited_tracks.clear()
-
-        self._tracks = []
-        self._track_rows = {}
-        self._populating = True
-        self.track_table.setRowCount(0)
-        self._populating = False
+        self.scan.stop()
+        self.scan.stop_rescans()
+        self.track_table.set_tracks([])
         self._update_selection_label()
 
     def _load_tracks(self) -> None:
@@ -490,7 +474,7 @@ class DownloadTab(QWidget):
         self,
         tracks: list[Track],
     ) -> None:
-        self._populate_tracks(tracks)
+        self.track_table.set_tracks(tracks)
         self.log_view.appendPlainText(
             f"Found {len(tracks)} track(s)."
         )
@@ -518,10 +502,69 @@ class DownloadTab(QWidget):
 
         if (
             self._auto_scan_lyrics
-            and self._tracks
-            and self._scan_worker is None
+            and self.track_table.tracks
+            and not self.scan.is_scanning
         ):
             self._start_lyrics_scan()
+
+    # ---------------------------------------------------------
+    # Format audit
+    # ---------------------------------------------------------
+
+    def _show_formats(self) -> None:
+        if self._audit_worker is not None:
+            return
+
+        url = self.url_input.text().strip()
+
+        if not url:
+            QMessageBox.warning(
+                self,
+                "Missing URL",
+                "Enter a playlist or track URL.",
+            )
+            return
+
+        worker = FormatAuditWorker(
+            url,
+            browser_name=self.browser_combo.currentData(),
+            forceipv4=self.force_ipv4_check.isChecked(),
+            parent=self,
+        )
+
+        worker.completed.connect(self._on_formats_loaded)
+        worker.failed.connect(self._on_formats_failed)
+        worker.finished.connect(self._on_formats_finished)
+
+        self._audit_worker = worker
+        self.formats_button.setEnabled(False)
+        self.formats_button.setText("Loading…")
+        worker.start()
+
+    def _on_formats_loaded(self, report) -> None:
+        dialog = FormatAuditDialog(report, self)
+        dialog.exec()
+
+    def _on_formats_failed(self, message: str) -> None:
+        QMessageBox.warning(
+            self,
+            "Could not list formats",
+            message,
+        )
+
+    def _on_formats_finished(self) -> None:
+        worker = self._audit_worker
+        self._audit_worker = None
+
+        if worker is not None:
+            worker.deleteLater()
+
+        self.formats_button.setText("Formats")
+        self.formats_button.setEnabled(
+            bool(self.url_input.text().strip())
+            and self._load_worker is None
+            and self._worker is None
+        )
 
     # ---------------------------------------------------------
     # Lyrics scan
@@ -529,192 +572,120 @@ class DownloadTab(QWidget):
 
     def _on_lyrics_toggled(self, checked: bool) -> None:
         self.confidence_combo.setEnabled(checked)
+        self.track_table.set_lyrics_enabled(checked)
 
         if not checked:
-            self._stop_lyrics_scan()
-            self._stop_targeted_scan()
-            self._set_lyrics_off()
-        elif self._tracks:
+            self.scan.stop()
+            self.scan.stop_rescans()
+            self.track_table.set_lyrics_off()
+            self._reset_scan_button()
+        elif self.track_table.tracks:
             self._start_lyrics_scan()
 
-    def _set_lyrics_off(self) -> None:
-        self._scan_best.clear()
-        self._scan_note.clear()
+        self._update_selection_label()
 
-        for row in range(self.track_table.rowCount()):
-            item = self.track_table.item(row, 6)
-
-            if item is None:
-                continue
-
-            item.setText("Off")
-            item.setForeground(QBrush(LYRICS_COLORS["off"]))
-            item.setToolTip("Lyrics download is disabled.")
+    def _on_confidence_changed(self, _index: int) -> None:
+        self.track_table.set_minimum_confidence(
+            self.confidence_combo.currentData()
+        )
 
     def _start_lyrics_scan(self) -> None:
-        self._stop_lyrics_scan()
-        self._stop_targeted_scan()
-        self._edited_tracks.clear()
+        self.scan.stop_rescans()
+        self.scan.stop()
+
+        tracks = self.track_table.selected_tracks()
+
+        if not tracks or not self.lyrics_check.isChecked():
+            return
+
+        if self._worker is not None or self._load_worker is not None:
+            return
+
+        for track in tracks:
+            self.track_table.mark_lyrics_pending(
+                track,
+                "Searching…",
+                "Searching lyrics providers…",
+            )
+            self.track_table.clear_lyrics(track)
+
+        if not self.scan.start(tracks):
+            return
+
+        self.scan_button.setEnabled(True)
+        self.scan_button.setText("Stop scanning…")
+
+    def _on_scan_button_clicked(self) -> None:
+        if self.scan.is_scanning:
+            self._stop_lyrics_scan()
+        else:
+            self._start_lyrics_scan()
+
+    def _stop_lyrics_scan(self) -> None:
+        self.scan.stop()
+        self.scan.stop_rescans()
+        self._reset_scan_button()
+        self._update_selection_label()
+
+    def _reset_scan_button(self) -> None:
+        self.scan_button.setText("Find lyrics")
+        self.scan_button.setEnabled(
+            bool(self.track_table.tracks)
+            and bool(self.track_table.selected_tracks())
+            and self._worker is None
+            and self._load_worker is None
+            and not self.scan.is_scanning
+            and self.lyrics_check.isChecked()
+        )
+
+    def _on_scan_progress(self, index: int, total: int) -> None:
+        self.scan_button.setText(
+            f"Stop scanning ({index}/{total})"
+        )
+
+    def _on_scan_result(
+        self,
+        track: Track,
+        best,
+        closest,
+    ) -> None:
+        if self._worker is not None:
+            return
+
+        self.track_table.update_lyrics(
+            track,
+            best,
+            self._closest_note(closest),
+        )
+
+    def _on_scan_failed(
+        self,
+        track: Track,
+        message: str,
+    ) -> None:
+        if self._worker is not None:
+            return
+
+        self.track_table.update_lyrics(
+            track,
+            None,
+            f"Error: {message}",
+        )
+
+    def _on_scan_finished(self) -> None:
+        self._reset_scan_button()
+
+    def _on_metadata_edited(self, track: Track) -> None:
+        if not self.lyrics_check.isChecked():
+            return
 
         if (
-            not self._tracks
-            or self._worker is not None
+            self._worker is not None
             or self._load_worker is not None
         ):
             return
 
-        if not self.lyrics_check.isChecked():
-            self._set_lyrics_off()
-            return
-
-        self._scan_best.clear()
-        self._scan_note.clear()
-
-        for row in range(self.track_table.rowCount()):
-            item = self.track_table.item(row, 6)
-
-            if item is None:
-                continue
-
-            item.setText("Searching…")
-            item.setForeground(QBrush(LYRICS_COLORS["off"]))
-            item.setToolTip("Searching lyrics providers…")
-
-        self._scan_generation += 1
-        generation = self._scan_generation
-
-        worker = LyricsScanWorker(self._tracks, parent=self)
-
-        worker.scanned.connect(
-            lambda track, best, closest, gen=generation: (
-                self._on_lyrics_scanned(
-                    gen,
-                    track,
-                    best,
-                    closest,
-                )
-            )
-        )
-        worker.failed.connect(
-            lambda track, message, gen=generation: (
-                self._on_lyrics_scan_failed(
-                    gen,
-                    track,
-                    message,
-                )
-            )
-        )
-        worker.progress.connect(
-            lambda index, total, gen=generation: (
-                self._on_lyrics_scan_progress(
-                    gen,
-                    index,
-                    total,
-                )
-            )
-        )
-        worker.finished.connect(
-            lambda current=worker: (
-                self._on_scan_worker_finished(current)
-            )
-        )
-
-        self._scan_worker = worker
-        self._scan_workers.append(worker)
-        self.scan_button.setEnabled(False)
-        self.scan_button.setText("Scanning…")
-        worker.start()
-
-    def _stop_lyrics_scan(self) -> None:
-        worker = self._scan_worker
-
-        if worker is not None:
-            worker.cancel()
-
-        self._scan_worker = None
-        self._scan_generation += 1
-
-        self.scan_button.setText("Find lyrics")
-        self.scan_button.setEnabled(
-            bool(self._tracks)
-            and self._worker is None
-            and self._load_worker is None
-            and self.lyrics_check.isChecked()
-        )
-
-    def _on_scan_worker_finished(self, worker) -> None:
-        if worker in self._scan_workers:
-            self._scan_workers.remove(worker)
-
-        worker.deleteLater()
-
-        if worker is self._scan_worker:
-            self._scan_worker = None
-            self._edited_tracks.clear()
-            self.scan_button.setText("Find lyrics")
-            self.scan_button.setEnabled(
-                bool(self._tracks)
-                and self._worker is None
-                and self.lyrics_check.isChecked()
-            )
-
-    def _on_lyrics_scan_progress(
-        self,
-        generation: int,
-        index: int,
-        total: int,
-    ) -> None:
-        if generation != self._scan_generation:
-            return
-
-        self.scan_button.setText(
-            f"Scanning {index}/{total}…"
-        )
-
-    def _on_lyrics_scanned(
-        self,
-        generation: int,
-        track,
-        best,
-        closest,
-    ) -> None:
-        if generation != self._scan_generation:
-            return
-
-        if self._worker is not None:
-            return
-
-        key = id(track)
-
-        if key not in self._track_rows:
-            return
-
-        if key in self._edited_tracks:
-            return
-
-        self._scan_best[key] = best
-        self._scan_note[key] = self._closest_note(
-            closest
-        )
-        self._render_lyrics_cell(track)
-
-    def _on_lyrics_scan_failed(
-        self,
-        generation: int,
-        track,
-        message: str,
-    ) -> None:
-        if generation != self._scan_generation:
-            return
-
-        key = id(track)
-
-        if key not in self._track_rows:
-            return
-
-        self._scan_best[key] = None
-        self._scan_note[key] = f"Error: {message}"
-        self._render_lyrics_cell(track)
+        self.scan.schedule_rescan(track)
 
     @staticmethod
     def _closest_note(closest) -> str:
@@ -745,375 +716,19 @@ class DownloadTab(QWidget):
 
         return "No acceptable match."
 
-    def _render_lyrics_cell(self, track) -> None:
-        row = self._track_rows.get(id(track))
-
-        if row is None:
-            return
-
-        item = self.track_table.item(row, 6)
-
-        if item is None:
-            return
-
-        key = id(track)
-
-        if (
-            key not in self._scan_best
-            and key not in self._scan_note
-        ):
-            return
-
-        best = self._scan_best.get(key)
-        note = self._scan_note.get(key, "")
-
-        if best is None:
-            if note.startswith("Error:"):
-                text = "Error"
-                color = LYRICS_COLORS["error"]
-                tooltip = note
-            else:
-                text = "Not found"
-                color = LYRICS_COLORS["not_found"]
-                tooltip = note or "No acceptable lyrics match."
-        else:
-            minimum = self.confidence_combo.currentData()
-            meets = confidence_at_least(
-                best.confidence,
-                minimum,
-            )
-
-            text = (
-                f"Found ({best.confidence} · "
-                f"{best.result.provider})"
-            )
-
-            if not meets:
-                text += f" · below {minimum}"
-
-            color = (
-                LYRICS_COLORS["saved"]
-                if meets
-                else LYRICS_COLORS["below_threshold"]
-            )
-            tooltip = "; ".join(best.match_reasons) or text
-
-        item.setText(text)
-        item.setForeground(QBrush(color))
-        item.setToolTip(tooltip)
-
-    def _render_all_lyrics(self) -> None:
-        for track in self._tracks:
-            self._render_lyrics_cell(track)
-
-    def _schedule_track_rescan(self, track) -> None:
-        """Re-check lyrics after a metadata edit."""
-
-        if not self.lyrics_check.isChecked():
-            return
-
-        if (
-            self._worker is not None
-            or self._load_worker is not None
-        ):
-            return
-
-        key = id(track)
-        self._edited_tracks.add(key)
-        self._pending_rescans[key] = track
-        self._rescan_timer.start()
-
-    def _run_targeted_rescan(self) -> None:
-        if (
-            self._targeted_worker is not None
-            or not self._pending_rescans
-        ):
-            return
-
-        tracks = list(self._pending_rescans.values())
-        self._pending_rescans.clear()
-
-        worker = LyricsScanWorker(tracks, parent=self)
-        worker.scanned.connect(self._on_targeted_scanned)
-        worker.failed.connect(self._on_targeted_failed)
-        worker.finished.connect(self._on_targeted_finished)
-
-        self._targeted_worker = worker
-        self._scan_workers.append(worker)
-        worker.start()
-
-    def _on_targeted_scanned(
-        self,
-        track,
-        best,
-        closest,
-    ) -> None:
-        if self._worker is not None:
-            return
-
-        key = id(track)
-
-        if key not in self._track_rows:
-            return
-
-        self._scan_best[key] = best
-        self._scan_note[key] = self._closest_note(closest)
-        self._render_lyrics_cell(track)
-
-    def _on_targeted_failed(
-        self,
-        track,
-        message: str,
-    ) -> None:
-        if self._worker is not None:
-            return
-
-        key = id(track)
-
-        if key not in self._track_rows:
-            return
-
-        self._scan_best[key] = None
-        self._scan_note[key] = f"Error: {message}"
-        self._render_lyrics_cell(track)
-
-    def _on_targeted_finished(self) -> None:
-        worker = self._targeted_worker
-        self._targeted_worker = None
-
-        if worker is not None:
-            if worker in self._scan_workers:
-                self._scan_workers.remove(worker)
-            worker.deleteLater()
-
-        if self._pending_rescans:
-            self._run_targeted_rescan()
-
-    def _stop_targeted_scan(self) -> None:
-        self._rescan_timer.stop()
-        self._pending_rescans.clear()
-
-        if self._targeted_worker is not None:
-            self._targeted_worker.cancel()
-
-    def _populate_tracks(
-        self,
-        tracks: list[Track],
-    ) -> None:
-        self._tracks = list(tracks)
-        self._track_rows = {}
-        self._checkboxes.clear()
-        self._scan_best.clear()
-        self._scan_note.clear()
-        self._edited_tracks.clear()
-        self._populating = True
-
-        self.track_table.setRowCount(0)
-        self.track_table.setRowCount(len(self._tracks))
-
-        for row, track in enumerate(self._tracks):
-            self._track_rows[id(track)] = row
-
-            checkbox = QCheckBox()
-            checkbox.setChecked(True)
-
-            container = QWidget()
-            container_layout = QHBoxLayout(container)
-            container_layout.setContentsMargins(0, 0, 0, 0)
-            container_layout.setAlignment(
-                Qt.AlignmentFlag.AlignCenter
-            )
-            container_layout.addWidget(checkbox)
-
-            checkbox.stateChanged.connect(
-                lambda _state: self._update_selection_label()
-            )
-
-            self.track_table.setCellWidget(row, 0, container)
-            self._checkboxes[id(track)] = checkbox
-
-            values = (
-                str(row + 1),
-                track.title,
-                track.artist or "",
-                track.album or "",
-                format_duration(track.duration),
-                "—",
-            )
-
-            for column, value in enumerate(values, start=1):
-                item = QTableWidgetItem(value)
-
-                flags = (
-                    Qt.ItemFlag.ItemIsEnabled
-                    | Qt.ItemFlag.ItemIsSelectable
-                )
-
-                if column in (2, 3, 4, 5):
-                    flags |= Qt.ItemFlag.ItemIsEditable
-                    item.setToolTip(
-                        "Double-click to correct this metadata."
-                    )
-
-                item.setFlags(flags)
-
-                self.track_table.setItem(
-                    row,
-                    column,
-                    item,
-                )
-
-        self._populating = False
-        self._update_selection_label()
+    # ---------------------------------------------------------
+    # Selection
+    # ---------------------------------------------------------
 
     def _selected_tracks(self) -> list[Track]:
-        selected: list[Track] = []
-
-        for track in self._tracks:
-            checkbox = self._checkboxes.get(id(track))
-
-            if checkbox is not None and checkbox.isChecked():
-                selected.append(track)
-
-        return selected
+        return self.track_table.selected_tracks()
 
     def _set_all_checked(self, checked: bool) -> None:
-        if not self._tracks:
-            return
-
-        self._populating = True
-
-        for track in self._tracks:
-            checkbox = self._checkboxes.get(id(track))
-
-            if checkbox is not None:
-                checkbox.setChecked(checked)
-
-        self._populating = False
-        self._update_selection_label()
-
-    def _on_track_item_changed(
-        self,
-        item: QTableWidgetItem,
-    ) -> None:
-        if self._populating:
-            return
-
-        row = item.row()
-
-        if not 0 <= row < len(self._tracks):
-            return
-
-        track = self._tracks[row]
-
-        text = item.text().strip()
-
-        if item.column() == 2:
-            if text:
-                track.title = text
-            else:
-                item.setText(track.title)
-        elif item.column() == 3:
-            track.artist = text or None
-        elif item.column() == 4:
-            track.album = text or None
-        elif item.column() == 5:
-            try:
-                seconds = parse_duration(item.text())
-            except ValueError as error:
-                self._populating = True
-                item.setText(
-                    format_duration(track.duration)
-                )
-                self._populating = False
-
-                QMessageBox.warning(
-                    self,
-                    "Invalid duration",
-                    str(error),
-                )
-                return
-
-            track.duration = seconds
-
-            self._populating = True
-            item.setText(format_duration(seconds))
-            self._populating = False
-
-        if item.column() in (2, 3, 4, 5):
-            key = id(track)
-            self._scan_best.pop(key, None)
-            self._scan_note.pop(key, None)
-
-            lyrics_item = self.track_table.item(row, 6)
-
-            if lyrics_item is not None:
-                if self.lyrics_check.isChecked():
-                    lyrics_item.setText("Re-checking…")
-                    lyrics_item.setToolTip(
-                        "Metadata changed; checking lyrics again…"
-                    )
-                else:
-                    lyrics_item.setText("Off")
-                    lyrics_item.setToolTip(
-                        "Lyrics download is disabled."
-                    )
-
-                lyrics_item.setForeground(
-                    QBrush(LYRICS_COLORS["off"])
-                )
-
-            self._schedule_track_rescan(track)
-
-    def _on_track_complete(self, track, result) -> None:
-        """Show the per-track lyrics result in the table."""
-
-        row = self._track_rows.get(id(track))
-
-        if row is None:
-            return
-
-        item = self.track_table.item(row, 6)
-
-        if item is None:
-            return
-
-        status = result.lyrics_status
-
-        if status == "saved":
-            text = (
-                f"Saved ({result.lyrics_note})"
-                if result.lyrics_note
-                else "Saved"
-            )
-        elif status == "below_threshold":
-            text = (
-                f"Skipped ({result.lyrics_note})"
-                if result.lyrics_note
-                else "Skipped"
-            )
-        elif status == "not_found":
-            text = "Not found"
-            if result.lyrics_note:
-                text += f" ({result.lyrics_note})"
-        elif status == "error":
-            text = "Error"
-            if result.lyrics_note:
-                text += f" ({result.lyrics_note})"
-        else:
-            text = "Off"
-
-        color = LYRICS_COLORS.get(status)
-
-        item.setText(text)
-        item.setToolTip(text)
-
-        if color is not None:
-            item.setForeground(QBrush(color))
+        self.track_table.set_all_checked(checked)
 
     def _update_selection_label(self) -> None:
-        count = len(self._selected_tracks())
-        total = len(self._tracks)
+        count = len(self.track_table.selected_tracks())
+        total = len(self.track_table.tracks)
 
         self.selection_label.setText(
             f"{count} of {total} selected"
@@ -1127,6 +742,9 @@ class DownloadTab(QWidget):
         )
 
         self.start_button.setEnabled(not busy and count > 0)
+        self.lyrics_only_button.setEnabled(
+            not busy and count > 0
+        )
 
         has_tracks = total > 0
         self.select_all_button.setEnabled(
@@ -1138,13 +756,21 @@ class DownloadTab(QWidget):
         self.scan_button.setEnabled(
             not busy
             and has_tracks
-            and self._scan_worker is None
-            and self.lyrics_check.isChecked()
+            and (
+                self.scan.is_scanning
+                or (
+                    count > 0
+                    and self.lyrics_check.isChecked()
+                )
+            )
         )
 
     def _set_busy(self, busy: bool) -> None:
         self.load_button.setEnabled(not busy)
         self.url_input.setEnabled(not busy)
+        self.formats_button.setEnabled(
+            not busy and bool(self.url_input.text().strip())
+        )
         self.cancel_button.setEnabled(
             busy and self._worker is not None
         )
@@ -1152,30 +778,38 @@ class DownloadTab(QWidget):
         self.start_button.setEnabled(
             not busy and bool(self._selected_tracks())
         )
+        self.lyrics_only_button.setEnabled(
+            not busy and bool(self._selected_tracks())
+        )
 
         self.select_all_button.setEnabled(
-            not busy and bool(self._tracks)
+            not busy and bool(self.track_table.tracks)
         )
         self.select_none_button.setEnabled(
-            not busy and bool(self._tracks)
+            not busy and bool(self.track_table.tracks)
         )
         self.scan_button.setEnabled(
             not busy
-            and bool(self._tracks)
-            and self._scan_worker is None
-            and self.lyrics_check.isChecked()
+            and bool(self.track_table.tracks)
+            and (
+                self.scan.is_scanning
+                or (
+                    bool(self._selected_tracks())
+                    and self.lyrics_check.isChecked()
+                )
+            )
         )
 
     # ---------------------------------------------------------
     # Downloading
     # ---------------------------------------------------------
 
-    def _start(self) -> None:
+    def _start(self, lyrics_only: bool = False) -> None:
         if self._worker is not None:
             return
 
-        self._stop_lyrics_scan()
-        self._stop_targeted_scan()
+        self.scan.stop()
+        self.scan.stop_rescans()
 
         tracks = self._selected_tracks()
 
@@ -1204,6 +838,9 @@ class DownloadTab(QWidget):
             lyrics_min_confidence=(
                 self.confidence_combo.currentData()
             ),
+            lyrics_cache=self.scan.scan_cache(),
+            lyrics_only=lyrics_only,
+            forceipv4=self.force_ipv4_check.isChecked(),
             parent=self,
         )
 
@@ -1221,10 +858,18 @@ class DownloadTab(QWidget):
         self.summary_label.clear()
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
-        self.progress_label.setText("Starting…")
-        self.log_view.appendPlainText(
-            f"Starting download of {len(tracks)} track(s)…"
-        )
+
+        if lyrics_only:
+            self.progress_label.setText("Writing lyrics…")
+            self.log_view.appendPlainText(
+                f"Writing missing lyrics for {len(tracks)} "
+                "track(s)…"
+            )
+        else:
+            self.progress_label.setText("Starting…")
+            self.log_view.appendPlainText(
+                f"Starting download of {len(tracks)} track(s)…"
+            )
 
         worker.start()
 
@@ -1265,6 +910,11 @@ class DownloadTab(QWidget):
             f"{stage} — track {index} of {total}: "
             f"{track.title}"
         )
+
+    def _on_track_complete(self, track: Track, result) -> None:
+        """Show the per-track lyrics result in the table."""
+
+        self.track_table.show_result(track, result)
 
     def _on_completed(self, result) -> None:
         self.progress_bar.setRange(0, 100)
@@ -1358,12 +1008,7 @@ class DownloadTab(QWidget):
     def shutdown(self) -> None:
         """Cancel and wait for running work."""
 
-        self._stop_lyrics_scan()
-        self._stop_targeted_scan()
-
-        for worker in list(self._scan_workers):
-            if worker.isRunning():
-                worker.wait(15000)
+        self.scan.shutdown()
 
         if self._worker is not None:
             self._worker.cancel()
@@ -1371,11 +1016,9 @@ class DownloadTab(QWidget):
             if self._worker.isRunning():
                 self._worker.wait(15000)
 
-        if (
-            self._load_worker is not None
-            and self._load_worker.isRunning()
-        ):
-            self._load_worker.wait(15000)
+        for worker in (self._load_worker, self._audit_worker):
+            if worker is not None and worker.isRunning():
+                worker.wait(15000)
 
     def closeEvent(self, event) -> None:
         self.shutdown()

@@ -22,7 +22,7 @@ from ytmusic_dl.downloader import (
     list_audio_formats,
 )
 from ytmusic_dl.log import configure_logging
-from ytmusic_dl.pipeline import process_playlist
+from ytmusic_dl.pipeline import process_lyrics_only, process_playlist
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -91,6 +91,24 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     parser.add_argument(
+        "--lyrics-only",
+        action="store_true",
+        help=(
+            "Write missing lyrics for tracks whose audio files "
+            "already exist; do not download audio"
+        ),
+    )
+
+    parser.add_argument(
+        "--no-force-ipv4",
+        action="store_true",
+        help=(
+            "Allow IPv6 connections to YouTube (IPv4 is forced "
+            "by default)"
+        ),
+    )
+
+    parser.add_argument(
         "--browser",
         choices=(
             "vivaldi",
@@ -151,7 +169,11 @@ def _print_format_audit(args: argparse.Namespace) -> None:
             print()
 
     try:
-        report = list_audio_formats(args.url, browser)
+        report = list_audio_formats(
+            args.url,
+            browser,
+            forceipv4=not args.no_force_ipv4,
+        )
     except Exception as error:
         print(f"Error: Could not list formats: {error}")
         return
@@ -321,7 +343,12 @@ def main() -> None:
 
     print()
     print("=" * 60)
-    print("Starting download...")
+
+    if args.lyrics_only:
+        print("Writing lyrics for existing audio...")
+    else:
+        print("Starting download...")
+
     print("=" * 60)
     print()
 
@@ -339,19 +366,28 @@ def main() -> None:
     else:
         browser = None
 
-    result = process_playlist(
-        tracks,
-        args.output,
-        browser=browser,
-        download_lyrics=not args.no_lyrics,
-        download_thumbnails=not args.no_thumbnail,
-        audio_format=args.audio_format,
-        lyrics_min_confidence=args.lyrics_confidence,
-    )
+    if args.lyrics_only:
+        result = process_lyrics_only(
+            tracks,
+            args.output,
+            audio_format=args.audio_format,
+            lyrics_min_confidence=args.lyrics_confidence,
+        )
+    else:
+        result = process_playlist(
+            tracks,
+            args.output,
+            browser=browser,
+            download_lyrics=not args.no_lyrics,
+            download_thumbnails=not args.no_thumbnail,
+            audio_format=args.audio_format,
+            lyrics_min_confidence=args.lyrics_confidence,
+            forceipv4=not args.no_force_ipv4,
+        )
 
     print()
     print("=" * 60)
-    print("DOWNLOAD COMPLETE")
+    print("LYRICS COMPLETE" if args.lyrics_only else "DOWNLOAD COMPLETE")
     print("=" * 60)
     print()
 

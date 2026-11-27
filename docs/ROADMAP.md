@@ -1,7 +1,7 @@
 # Project Review and Roadmap
 
 Last reviewed: 2026-11-26  
-Current release: `v0.2.0`
+Current release: `v0.5.0`
 
 This document records the current project state, known issues, and the planned direction for future development. It is a planning document; listed items are not necessarily implemented yet.
 
@@ -44,12 +44,12 @@ The application is organized into focused modules under `src/ytmusic_dl/`:
 
 At the time of this review:
 
-- 242 tests were collected.
-- 242 tests passed.
+- 259 tests were collected.
+- 259 tests passed on macOS.
 - GUI tests are skipped when PySide6 is not installed.
 - No tests depend on a local browser profile or usable YouTube cookies.
 - The README test status matches the suite.
-- CI runs the suite on every push to `main` and on pull requests.
+- CI runs Ruff and the suite on Linux, and the GUI worker/tab tests on macOS, for every push to `main` and on pull requests.
 
 ## Known Issues and Risks
 
@@ -63,9 +63,8 @@ At the time of this review:
 
 3. **Platform considerations**
    - Playlist extraction does not currently use browser cookies; only downloading does.
-   - `forceipv4` is hardcoded.
    - A future macOS desktop app must not rely solely on `PATH` to locate FFmpeg or Deno when launched from Finder.
-   - Chromium profiles can contain newer extension cookie databases under `Storage/ext`; the downloader copies the primary database into a temporary profile before handing it to `yt-dlp`.
+   - Chromium profiles can contain newer extension cookie databases under `Storage/ext`; the downloader copies the primary database into a temporary profile before handing it to `yt-dlp`. The snapshot is refreshed after five minutes or as soon as the source database changes.
    - Chrome cookie access requires Full Disk Access for the host app on macOS.
 
 ## Planned Direction
@@ -177,11 +176,22 @@ At the time of this review:
 - [x] Show per-track lyrics results in the download table, including rejection reasons and provider-suggested metadata.
 - [x] Allow correcting Title, Artist, and Album inline before downloading.
 - [x] Clean channel-style artist names and use bracketed Chinese titles for lyrics matching.
+- [x] Scan only the selected tracks, allow stopping a scan, and reuse scan results during download when metadata has not changed.
+- [x] Write missing lyrics for already-downloaded audio from the GUI and with `ytmusic-dl --lyrics-only`.
+- [x] Add a GUI audio-format audit that highlights the `bestaudio` selection.
+- [x] Make `forceipv4` configurable from the CLI and GUI.
+- [x] Split the download tab into track-table, lyrics-scan, and format-audit modules.
+- [x] Add Ruff linting to CI.
+- [x] Add documentation screenshots and refresh the README.
 - [ ] Test a real macOS Finder launch from a packaged `.app` (blocked on Phase 5 packaging).
 
 ### Phase 5: Packaging and Releases
 
-Suggested release sequence:
+Released:
+
+- `v0.5.0`: native desktop application, lyrics-only CLI, improved matching confidence, Best/Source audio mode, M4A support, and an MIT license.
+
+Earlier planned milestones:
 
 - `v0.3.0`: lyrics-only CLI and improved matching confidence
 - `v0.4.0`: Best/Source audio mode and M4A support
@@ -191,7 +201,7 @@ Packaging goals:
 
 - Linux: AppImage first, optional RPM later
 - macOS: `.app`/`.dmg`, with signing and notarization when public distribution is ready
-- Updated README, screenshots, desktop installation instructions, and troubleshooting guidance
+- Updated README, screenshots (added), desktop installation instructions, and troubleshooting guidance
 
 ## Acceptance Criteria
 

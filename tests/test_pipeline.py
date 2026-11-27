@@ -13,7 +13,11 @@ from ytmusic_dl.models import (
     Track,
     TrackResult,
 )
-from ytmusic_dl.pipeline import process_playlist, process_track
+from ytmusic_dl.pipeline import (
+    process_lyrics_only,
+    process_playlist,
+    process_track,
+)
 
 TEST_BROWSER = BrowserProfile(
     name="vivaldi",
@@ -126,6 +130,7 @@ def test_process_playlist() -> None:
             progress=None,
             log=None,
             cancel_event=None,
+            forceipv4=True,
             browser=TEST_BROWSER,
         )
 
@@ -250,6 +255,7 @@ def test_process_playlist_without_lyrics_and_thumbnails() -> None:
             progress=None,
             log=None,
             cancel_event=None,
+            forceipv4=True,
             browser=TEST_BROWSER,
         )
 
@@ -312,6 +318,7 @@ def test_process_playlist_with_opus() -> None:
             progress=None,
             log=None,
             cancel_event=None,
+            forceipv4=True,
             browser=TEST_BROWSER,
         )
 
@@ -447,6 +454,7 @@ def test_process_playlist_continues_without_cookies(
         progress=None,
         log=None,
         cancel_event=None,
+        forceipv4=True,
     )
 
     output = capsys.readouterr().out
@@ -492,6 +500,7 @@ def test_process_playlist_explicit_browser_skips_detection() -> None:
         progress=None,
         log=None,
         cancel_event=None,
+        forceipv4=True,
     )
 
 def test_process_track_writes_high_confidence_lyrics(
@@ -947,3 +956,166 @@ def test_process_playlist_reports_completed_tracks() -> None:
         )
 
     assert completed == [(tracks[0], track_result)]
+
+def test_process_track_reuses_cached_lyrics(
+    tmp_path: Path,
+) -> None:
+    """Skip provider searches when a scan result is cached."""
+
+    track = make_track(1)
+    audio_path = tmp_path / "song.mp3"
+    result = make_lyrics_candidate("high").result
+    cache = {track.metadata_signature(): result}
+
+    with (
+        patch(
+            "ytmusic_dl.pipeline.download_track",
+            return_value=DownloadInfo(path=audio_path),
+        ),
+        patch("ytmusic_dl.pipeline.write_metadata"),
+        patch(
+            "ytmusic_dl.pipeline.search_candidates",
+        ) as mock_search,
+        patch(
+            "ytmusic_dl.pipeline.write_lyrics",
+        ) as mock_write,
+    ):
+        track_result = process_track(
+            track,
+            tmp_path,
+            download_thumbnails=False,
+            lyrics_cache=cache,
+        )
+
+    assert track_result.lyrics_status == "saved"
+    mock_search.assert_not_called()
+    mock_write.assert_called_once()
+
+def test_process_track_reuses_cached_missing_lyrics(
+    tmp_path: Path,
+) -> None:
+    """Report a cached miss without searching providers again."""
+
+    track = make_track(1)
+    audio_path = tmp_path / "song.mp3"
+    cache = {track.metadata_signature(): None}
+
+    with (
+        patch(
+            "ytmusic_dl.pipeline.download_track",
+            return_value=DownloadInfo(path=audio_path),
+        ),
+        patch("ytmusic_dl.pipeline.write_metadata"),
+        patch(
+            "ytmusic_dl.pipeline.search_candidates",
+        ) as mock_search,
+        patch("ytmusic_dl.pipeline.write_lyrics") as mock_write,
+    ):
+        track_result = process_track(
+            track,
+            tmp_path,
+            download_thumbnails=False,
+            lyrics_cache=cache,
+        )
+
+    assert track_result.lyrics_status == "not_found"
+    assert track_result.lyrics_note == "cached: no match"
+    mock_search.assert_not_called()
+    mock_write.assert_not_called()
+
+def test_process_lyrics_only_writes_missing_lyrics(
+    tmp_path: Path,
+) -> None:
+    """Write lyrics for an existing audio file without downloading."""
+
+    track = make_track(1)
+    audio_path = tmp_path / "song.mp3"
+    audio_path.touch()
+    completed = []
+
+    with (
+        patch(
+            "ytmusic_dl.pipeline.find_existing_audio",
+            return_value=audio_path,
+        ),
+        patch(
+            "ytmusic_dl.pipeline.search_candidates",
+            return_value=[make_lyrics_candidate("high")],
+        ),
+        patch(
+            "ytmusic_dl.pipeline.write_lyrics",
+        ) as mock_write,
+        patch(
+            "ytmusic_dl.pipeline.download_track",
+        ) as mock_download,
+    ):
+        result = process_lyrics_only(
+            [track],
+            tmp_path,
+            on_track_complete=lambda item, value: completed.append(
+                (item, value)
+            ),
+        )
+
+    assert result.total == 1
+    assert result.lyrics == 1
+    assert result.successful == 1
+    assert result.failed == 0
+    mock_download.assert_not_called()
+    mock_write.assert_called_once()
+    assert len(completed) == 1
+
+def test_process_lyrics_only_skips_existing_lyrics(
+    tmp_path: Path,
+) -> None:
+    """Leave existing .lrc files alone unless overwrite is set."""
+
+    track = make_track(1)
+    audio_path = tmp_path / "song.mp3"
+    audio_path.touch()
+    lyrics_path = tmp_path / "song.lrc"
+    lyrics_path.write_text("existing", encoding="utf-8")
+
+    with (
+        patch(
+            "ytmusic_dl.pipeline.find_existing_audio",
+            return_value=audio_path,
+        ),
+        patch(
+            "ytmusic_dl.pipeline.search_candidates",
+        ) as mock_search,
+        patch("ytmusic_dl.pipeline.write_lyrics") as mock_write,
+    ):
+        result = process_lyrics_only(
+            [track],
+            tmp_path,
+        )
+
+    assert result.successful == 1
+    assert result.skipped == 0
+    assert result.lyrics == 0
+    mock_search.assert_not_called()
+    mock_write.assert_not_called()
+
+def test_process_lyrics_only_reports_missing_audio(
+    tmp_path: Path,
+) -> None:
+    """Skip tracks whose audio has not been downloaded yet."""
+
+    completed = []
+
+    with patch(
+        "ytmusic_dl.pipeline.find_existing_audio",
+        return_value=None,
+    ):
+        result = process_lyrics_only(
+            [make_track(1)],
+            tmp_path,
+            on_track_complete=lambda item, value: completed.append(
+                (item, value)
+            ),
+        )
+
+    assert result.skipped == 1
+    assert result.failed == 0
+    assert completed[0][1].lyrics_status == "no_audio"

@@ -125,6 +125,7 @@ def test_main() -> None:
         download_thumbnails=True,
         audio_format="mp3",
         lyrics_min_confidence="high",
+        forceipv4=True,
     )
 
 def test_main_without_lyrics_and_thumbnail() -> None:
@@ -185,6 +186,7 @@ def test_main_without_lyrics_and_thumbnail() -> None:
         download_thumbnails=False,
         audio_format="mp3",
         lyrics_min_confidence="high",
+        forceipv4=True,
     )
 
 def test_main_extraction_failure(capsys) -> None:
@@ -355,6 +357,7 @@ def test_main_with_browser() -> None:
         download_thumbnails=True,
         audio_format="mp3",
         lyrics_min_confidence="high",
+        forceipv4=True,
     )
 
 def test_main_with_unavailable_browser() -> None:
@@ -459,6 +462,7 @@ def test_main_without_browser_uses_automatic_detection() -> None:
         download_thumbnails=True,
         audio_format="mp3",
         lyrics_min_confidence="high",
+        forceipv4=True,
     )
 
 def test_main_list_browsers() -> None:
@@ -621,6 +625,7 @@ def test_main_with_opus_format() -> None:
         download_thumbnails=True,
         audio_format="opus",
         lyrics_min_confidence="high",
+        forceipv4=True,
     )
 
 def test_main_list_formats(capsys) -> None:
@@ -672,7 +677,9 @@ def test_main_list_formats(capsys) -> None:
     assert "Selected by bestaudio: 251" in output
     assert "No high-bitrate" in output
 
-    mock_list.assert_called_once_with(url, None)
+    mock_list.assert_called_once_with(
+        url, None, forceipv4=True
+    )
 
 def test_main_list_formats_requires_url() -> None:
     """Require a URL for the format audit."""
@@ -685,3 +692,113 @@ def test_main_list_formats_requires_url() -> None:
         pytest.raises(SystemExit),
     ):
         main()
+
+def test_main_lyrics_only_writes_existing_audio_lyrics(
+    capsys,
+) -> None:
+    """Use the existing-audio pipeline with --lyrics-only."""
+
+    tracks = [
+        Track(
+            playlist_index=1,
+            title="Test Song",
+            artist="Test Artist",
+            video_id="test123",
+            playlist_name="Test Playlist",
+        )
+    ]
+
+    result = PlaylistResult(
+        total=1,
+        successful=1,
+        failed=0,
+        lyrics=1,
+        thumbnails=0,
+        output_directory=Path("downloads/test"),
+        failed_tracks=[],
+        skipped=0,
+    )
+
+    with (
+        patch(
+            "ytmusic_dl.cli.extract_playlist",
+            return_value=tracks,
+        ),
+        patch(
+            "ytmusic_dl.cli.process_lyrics_only",
+            return_value=result,
+        ) as mock_process,
+        patch(
+            "ytmusic_dl.cli.process_playlist",
+        ) as mock_download,
+        patch(
+            "sys.argv",
+            [
+                "ytmusic-dl",
+                "https://music.youtube.com/playlist?list=test",
+                "--lyrics-only",
+                "--audio-format",
+                "opus",
+            ],
+        ),
+    ):
+        main()
+
+    mock_download.assert_not_called()
+    mock_process.assert_called_once_with(
+        tracks,
+        Path("downloads"),
+        audio_format="opus",
+        lyrics_min_confidence="high",
+    )
+
+    output = capsys.readouterr().out
+
+    assert "Writing lyrics for existing audio..." in output
+    assert "LYRICS COMPLETE" in output
+
+
+def test_main_can_disable_forced_ipv4() -> None:
+    """Forward --no-force-ipv4 to the pipeline."""
+
+    tracks = [
+        Track(
+            playlist_index=1,
+            title="Test Song",
+            artist="Test Artist",
+            video_id="test123",
+        )
+    ]
+
+    result = PlaylistResult(
+        total=1,
+        successful=1,
+        failed=0,
+        lyrics=0,
+        thumbnails=0,
+        output_directory=Path("downloads"),
+        failed_tracks=[],
+        skipped=0,
+    )
+
+    with (
+        patch(
+            "ytmusic_dl.cli.extract_playlist",
+            return_value=tracks,
+        ),
+        patch(
+            "ytmusic_dl.cli.process_playlist",
+            return_value=result,
+        ) as mock_process,
+        patch(
+            "sys.argv",
+            [
+                "ytmusic-dl",
+                "https://music.youtube.com/playlist?list=test",
+                "--no-force-ipv4",
+            ],
+        ),
+    ):
+        main()
+
+    assert mock_process.call_args.kwargs["forceipv4"] is False
