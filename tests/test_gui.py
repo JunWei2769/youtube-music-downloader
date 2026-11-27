@@ -437,9 +437,7 @@ def test_download_tab_reviews_and_selects_tracks(
     assert tab.start_button.isEnabled()
     assert "2 of 2 selected" in tab.selection_label.text()
 
-    tab.track_table.item(0, 0).setCheckState(
-        Qt.CheckState.Unchecked
-    )
+    tab._checkboxes[id(tracks[0])].setChecked(False)
 
     assert "1 of 2 selected" in tab.selection_label.text()
     assert tab._selected_tracks() == [tracks[1]]

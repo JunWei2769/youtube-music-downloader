@@ -95,6 +95,7 @@ class DownloadTab(QWidget):
         self._targeted_worker: LyricsScanWorker | None = None
         self._tracks: list[Track] = []
         self._track_rows: dict[int, int] = {}
+        self._checkboxes: dict[int, QCheckBox] = {}
         self._populating = False
         self._auto_scan_lyrics = auto_scan_lyrics
 
@@ -263,6 +264,11 @@ class DownloadTab(QWidget):
             2,
             QHeaderView.ResizeMode.Stretch,
         )
+        header.setSectionResizeMode(
+            0,
+            QHeaderView.ResizeMode.Fixed,
+        )
+        self.track_table.setColumnWidth(0, 80)
 
         duration_header = self.track_table.horizontalHeaderItem(
             5
@@ -896,6 +902,7 @@ class DownloadTab(QWidget):
     ) -> None:
         self._tracks = list(tracks)
         self._track_rows = {}
+        self._checkboxes.clear()
         self._scan_best.clear()
         self._scan_note.clear()
         self._edited_tracks.clear()
@@ -907,15 +914,23 @@ class DownloadTab(QWidget):
         for row, track in enumerate(self._tracks):
             self._track_rows[id(track)] = row
 
-            check = QTableWidgetItem()
-            check.setFlags(
-                Qt.ItemFlag.ItemIsUserCheckable
-                | Qt.ItemFlag.ItemIsEnabled
-                | Qt.ItemFlag.ItemIsSelectable
-            )
-            check.setCheckState(Qt.CheckState.Checked)
+            checkbox = QCheckBox()
+            checkbox.setChecked(True)
 
-            self.track_table.setItem(row, 0, check)
+            container = QWidget()
+            container_layout = QHBoxLayout(container)
+            container_layout.setContentsMargins(0, 0, 0, 0)
+            container_layout.setAlignment(
+                Qt.AlignmentFlag.AlignCenter
+            )
+            container_layout.addWidget(checkbox)
+
+            checkbox.stateChanged.connect(
+                lambda _state: self._update_selection_label()
+            )
+
+            self.track_table.setCellWidget(row, 0, container)
+            self._checkboxes[id(track)] = checkbox
 
             values = (
                 str(row + 1),
@@ -954,14 +969,10 @@ class DownloadTab(QWidget):
     def _selected_tracks(self) -> list[Track]:
         selected: list[Track] = []
 
-        for row, track in enumerate(self._tracks):
-            item = self.track_table.item(row, 0)
+        for track in self._tracks:
+            checkbox = self._checkboxes.get(id(track))
 
-            if (
-                item is not None
-                and item.checkState()
-                == Qt.CheckState.Checked
-            ):
+            if checkbox is not None and checkbox.isChecked():
                 selected.append(track)
 
         return selected
@@ -970,19 +981,13 @@ class DownloadTab(QWidget):
         if not self._tracks:
             return
 
-        state = (
-            Qt.CheckState.Checked
-            if checked
-            else Qt.CheckState.Unchecked
-        )
-
         self._populating = True
 
-        for row in range(self.track_table.rowCount()):
-            item = self.track_table.item(row, 0)
+        for track in self._tracks:
+            checkbox = self._checkboxes.get(id(track))
 
-            if item is not None:
-                item.setCheckState(state)
+            if checkbox is not None:
+                checkbox.setChecked(checked)
 
         self._populating = False
         self._update_selection_label()
@@ -1000,10 +1005,6 @@ class DownloadTab(QWidget):
             return
 
         track = self._tracks[row]
-
-        if item.column() == 0:
-            self._update_selection_label()
-            return
 
         text = item.text().strip()
 
