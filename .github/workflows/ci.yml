@@ -31,7 +31,25 @@ jobs:
           sudo apt-get install -y ffmpeg
 
       - name: Run tests
-        run: uv run pytest -q
+        run: |
+          set -o pipefail
+          uv run pytest -q 2>&1 | tee pytest.log
+
+      - name: Report test failures
+        if: failure()
+        run: |
+          if [ ! -f pytest.log ]; then
+            echo "::error::pytest.log was not created"
+            exit 0
+          fi
+
+          summary="$(grep -E '^(FAILED|ERROR)' pytest.log | head -20 | tr '\n' ';' | cut -c1-800)"
+
+          if [ -z "$summary" ]; then
+            summary="$(tail -20 pytest.log | tr '\n' ' ' | cut -c1-800)"
+          fi
+
+          echo "::error::${summary}"
 
   gui:
     runs-on: macos-latest
