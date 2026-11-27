@@ -25,5 +25,37 @@ jobs:
       - name: Install dependencies
         run: uv sync --frozen
 
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
       - name: Run tests
         run: uv run pytest -q
+
+  gui:
+    runs-on: macos-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Install Python
+        run: uv python install 3.14
+
+      - name: Install dependencies
+        run: uv sync --frozen --extra gui
+
+      - name: Run GUI tests
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          uv run pytest -q \
+            tests/test_gui.py \
+            tests/test_download_worker.py \
+            tests/test_lyrics_scan_worker.py
