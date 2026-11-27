@@ -44,8 +44,8 @@ The application is organized into focused modules under `src/ytmusic_dl/`:
 
 At the time of this review:
 
-- 227 tests were collected.
-- 227 tests passed.
+- 234 tests were collected.
+- 234 tests passed.
 - GUI tests are skipped when PySide6 is not installed.
 - No tests depend on a local browser profile or usable YouTube cookies.
 - The README test status matches the suite.
@@ -171,6 +171,7 @@ At the time of this review:
 - [x] Treat small music-video duration differences as supporting evidence instead of rejecting the match.
 - [x] Allow correcting the Duration so lyrics matching can use the true track length; yt-dlp only exposes the video length.
 - [x] Search providers in both Traditional and Simplified Chinese, including bracketed song titles from noisy video titles.
+- [x] Check lyrics availability as soon as tracks are loaded, and re-check a track after its metadata is edited.
 - [x] Show per-track lyrics results in the download table, including rejection reasons and provider-suggested metadata.
 - [x] Allow correcting Title, Artist, and Album inline before downloading.
 - [x] Clean channel-style artist names and use bracketed Chinese titles for lyrics matching.

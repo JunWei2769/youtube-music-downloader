@@ -487,7 +487,7 @@ ytmusic-dl-gui
 
 The preview has three tabs: **Music Download**, **Lyrics Only**, and **Settings**.
 
-- **Music Download** is functional: load a playlist or track URL, review the retrieved tracks in a table, correct Title/Artist/Album inline when an uploader channel is not the artist, deselect anything you do not want, then download with your chosen format (including `source` and `m4a`), browser cookies, lyrics and thumbnail options, live per-track progress, cancellation, a download log, and a source/output quality report. The Lyrics column shows whether lyrics were saved, skipped by confidence, or not matched, including the provider's suggested artist/title when a match is rejected.
+- **Music Download** is functional: load a playlist or track URL, review the retrieved tracks in a table, correct Title/Artist/Album/Duration inline when an uploader channel is not the artist, deselect anything you do not want, then download with your chosen format (including `source` and `m4a`), browser cookies, lyrics and thumbnail options, live per-track progress, cancellation, a download log, and a source/output quality report. Lyrics availability is checked automatically after loading, and editing any metadata re-checks that track after a short delay. The Lyrics column shows whether lyrics were saved, found at which confidence, skipped by confidence, or not matched, including the provider's suggested artist/title when a match is rejected.
 
   The Duration column is the YouTube video length; `yt-dlp` does not expose the album-track length. Double-click it to enter the true track length (for example `3:30` or `210`) when an official video is longer than the song. Lyrics matching uses the corrected value.
 - **Lyrics Only** is functional: search by title and artist or by YouTube Music URL, review every candidate with confidence and match reasons, preview synchronized or plain lyrics, and save to an `.lrc` file. Rejected candidates cannot be saved, and medium/low matches ask for confirmation.
@@ -629,7 +629,7 @@ uv run pytest -v
 Current test status:
 
 ```text
-227 passed
+234 passed
 ```
 
 The GUI tests are skipped when PySide6 is not installed.

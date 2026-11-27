@@ -222,7 +222,7 @@ def test_lyrics_tab_handles_empty_results(qt_app, app_settings) -> None:
 def test_download_tab_lists_all_formats(qt_app, app_settings) -> None:
     """Offer every audio format, including source."""
 
-    tab = DownloadTab(settings=app_settings)
+    tab = DownloadTab(settings=app_settings, auto_scan_lyrics=False)
 
     values = [
         tab.format_combo.itemData(index)
@@ -240,7 +240,7 @@ def test_download_tab_lists_all_formats(qt_app, app_settings) -> None:
 def test_download_tab_reports_progress(qt_app, app_settings) -> None:
     """Update the progress bar and label from worker signals."""
 
-    tab = DownloadTab(settings=app_settings)
+    tab = DownloadTab(settings=app_settings, auto_scan_lyrics=False)
     track = Track(
         playlist_index=1,
         title="Test Song",
@@ -274,7 +274,7 @@ def test_download_tab_reports_progress(qt_app, app_settings) -> None:
 def test_download_tab_summarises_results(qt_app, app_settings) -> None:
     """Show the summary and failed tracks after a run."""
 
-    tab = DownloadTab(settings=app_settings)
+    tab = DownloadTab(settings=app_settings, auto_scan_lyrics=False)
 
     tab._on_log("Processing: Test Song")
 
@@ -315,7 +315,7 @@ def test_download_tab_persists_settings(
 ) -> None:
     """Restore download defaults from QSettings."""
 
-    tab = DownloadTab(settings=app_settings)
+    tab = DownloadTab(settings=app_settings, auto_scan_lyrics=False)
 
     tab.output_input.setText(str(tmp_path / "music"))
     tab.format_combo.setCurrentIndex(
@@ -332,7 +332,7 @@ def test_download_tab_persists_settings(
 
     tab.save_state()
 
-    restored = DownloadTab(settings=app_settings)
+    restored = DownloadTab(settings=app_settings, auto_scan_lyrics=False)
 
     assert restored.output_input.text() == str(
         tmp_path / "music"
@@ -425,7 +425,7 @@ def test_download_tab_reviews_and_selects_tracks(
 ) -> None:
     """Show loaded tracks and allow deselecting them."""
 
-    tab = DownloadTab(settings=app_settings)
+    tab = DownloadTab(settings=app_settings, auto_scan_lyrics=False)
 
     tracks = [make_track(1), make_track(2)]
     tab._on_tracks_loaded(tracks)
@@ -467,7 +467,7 @@ def test_download_tab_edits_metadata_and_shows_lyrics_status(
 ) -> None:
     """Correct metadata in place and show the lyrics result."""
 
-    tab = DownloadTab(settings=app_settings)
+    tab = DownloadTab(settings=app_settings, auto_scan_lyrics=False)
 
     tracks = [make_track(1)]
     tab._on_tracks_loaded(tracks)
@@ -545,5 +545,129 @@ def test_main_window_persists_selected_tab(
     assert restored.tabs.currentIndex() == 1
 
     restored.close()
+
+    assert qt_app is not None
+
+def test_download_tab_shows_scanned_lyrics(
+    qt_app,
+    app_settings,
+) -> None:
+    """Show lyrics availability after a scan."""
+
+    tab = DownloadTab(
+        settings=app_settings,
+        auto_scan_lyrics=False,
+    )
+
+    track = make_track(1)
+    tab._on_tracks_loaded([track])
+
+    tab.confidence_combo.setCurrentIndex(
+        tab.confidence_combo.findData("high")
+    )
+
+    candidate = make_candidate(
+        confidence="medium",
+        score=0.85,
+    )
+
+    tab._on_lyrics_scanned(
+        tab._scan_generation,
+        track,
+        candidate,
+        None,
+    )
+
+    cell = tab.track_table.item(0, 6).text()
+
+    assert "Found (medium · lrclib)" in cell
+    assert "below high" in cell
+
+    tab.confidence_combo.setCurrentIndex(
+        tab.confidence_combo.findData("medium")
+    )
+
+    assert tab.track_table.item(0, 6).text() == (
+        "Found (medium · lrclib)"
+    )
+
+    tab.close()
+
+    assert qt_app is not None
+
+def test_download_tab_shows_missing_lyrics(qt_app, app_settings) -> None:
+    """Show that no lyrics were found."""
+
+    tab = DownloadTab(
+        settings=app_settings,
+        auto_scan_lyrics=False,
+    )
+
+    track = make_track(1)
+    tab._on_tracks_loaded([track])
+
+    tab._on_lyrics_scanned(
+        tab._scan_generation,
+        track,
+        None,
+        None,
+    )
+
+    assert tab.track_table.item(0, 6).text() == "Not found"
+
+    tab.close()
+
+    assert qt_app is not None
+
+def test_download_tab_rescans_after_metadata_edit(
+    qt_app,
+    app_settings,
+) -> None:
+    """Re-check lyrics when metadata changes."""
+
+    tab = DownloadTab(
+        settings=app_settings,
+        auto_scan_lyrics=False,
+    )
+
+    track = make_track(1)
+    tab._on_tracks_loaded([track])
+
+    tab.track_table.item(0, 3).setText("李宗盛")
+
+    assert tab.track_table.item(0, 6).text() == "Re-checking…"
+    assert id(track) in tab._pending_rescans
+    assert tab._rescan_timer.isActive()
+
+    tab._rescan_timer.stop()
+    tab._pending_rescans.clear()
+    tab.close()
+
+    assert qt_app is not None
+
+def test_download_tab_auto_scans_after_load(
+    qt_app,
+    app_settings,
+) -> None:
+    """Start a lyrics scan when track loading finishes."""
+
+    with patch(
+        "ytmusic_dl.gui.download_tab.LyricsScanWorker"
+    ) as mock_worker:
+        tab = DownloadTab(
+            settings=app_settings,
+            auto_scan_lyrics=True,
+        )
+
+        track = make_track(1)
+        tab._populate_tracks([track])
+        tab._on_load_finished()
+
+        mock_worker.assert_called_once()
+        assert mock_worker.call_args.args[0] == [track]
+        mock_worker.return_value.start.assert_called_once()
+
+        tab._stop_lyrics_scan()
+        tab.close()
 
     assert qt_app is not None
