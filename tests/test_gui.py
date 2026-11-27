@@ -10,7 +10,11 @@ pytest.importorskip("PySide6")
 from pathlib import Path
 
 from PySide6.QtCore import QSettings, Qt
-from PySide6.QtWidgets import QApplication, QLabel
+from PySide6.QtWidgets import (
+    QAbstractItemView,
+    QApplication,
+    QLabel,
+)
 
 from ytmusic_dl.downloader import AUDIO_FORMATS
 from ytmusic_dl.gui.download_tab import TRACK_COLUMNS, DownloadTab
@@ -467,6 +471,23 @@ def test_download_tab_edits_metadata_and_shows_lyrics_status(
 
     tracks = [make_track(1)]
     tab._on_tracks_loaded(tracks)
+
+    triggers = tab.track_table.editTriggers()
+
+    assert (
+        triggers
+        & QAbstractItemView.EditTrigger.DoubleClicked
+    )
+
+    title_item = tab.track_table.item(0, 2)
+    artist_item = tab.track_table.item(0, 3)
+    duration_item = tab.track_table.item(0, 5)
+
+    assert title_item.flags() & Qt.ItemFlag.ItemIsEditable
+    assert artist_item.flags() & Qt.ItemFlag.ItemIsEditable
+    assert not (
+        duration_item.flags() & Qt.ItemFlag.ItemIsEditable
+    )
 
     tab.track_table.item(0, 2).setText("山丘")
     tab.track_table.item(0, 3).setText("李宗盛")

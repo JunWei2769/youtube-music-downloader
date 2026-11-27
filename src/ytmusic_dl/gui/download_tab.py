@@ -222,7 +222,8 @@ class DownloadTab(QWidget):
             QTableWidget.SelectionMode.SingleSelection
         )
         self.track_table.setEditTriggers(
-            QTableWidget.EditTrigger.NoEditTriggers
+            QTableWidget.EditTrigger.DoubleClicked
+            | QTableWidget.EditTrigger.EditKeyPressed
         )
         self.track_table.setAlternatingRowColors(True)
         self.track_table.setWordWrap(False)
