@@ -112,6 +112,11 @@ def test_get_browser_path_linux(tmp_path: Path) -> None:
     with (
         patch("ytmusic_dl.browser.platform.system", return_value="Linux"),
         patch("ytmusic_dl.browser.Path.home", return_value=tmp_path),
+        patch.dict(
+            "ytmusic_dl.browser.os.environ",
+            {"XDG_CONFIG_HOME": str(tmp_path / ".config")},
+            clear=False,
+        ),
     ):
         paths = get_browser_path()
 
@@ -228,6 +233,11 @@ Default=1
     with (
         patch("ytmusic_dl.browser.platform.system", return_value="Linux"),
         patch("ytmusic_dl.browser.Path.home", return_value=tmp_path),
+        patch.dict(
+            "ytmusic_dl.browser.os.environ",
+            {"XDG_CONFIG_HOME": str(tmp_path / ".config")},
+            clear=False,
+        ),
     ):
         browsers = detect_browser_profiles()
 
@@ -249,6 +259,11 @@ def test_detect_whale_profiles(tmp_path: Path) -> None:
     with (
         patch("ytmusic_dl.browser.platform.system", return_value="Linux"),
         patch("ytmusic_dl.browser.Path.home", return_value=tmp_path),
+        patch.dict(
+            "ytmusic_dl.browser.os.environ",
+            {"XDG_CONFIG_HOME": str(tmp_path / ".config")},
+            clear=False,
+        ),
     ):
         browsers = detect_browser_profiles()
 
