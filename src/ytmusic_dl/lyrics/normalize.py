@@ -6,6 +6,7 @@ from difflib import SequenceMatcher
 from opencc import OpenCC
 
 _OPENCC = OpenCC("t2s")
+_OPENCC_REVERSE = OpenCC("s2t")
 
 BRACKET_PATTERN = re.compile(
     r"[\(\（\[【]([^\)\）\]】]*)[\)\）\]】]"
@@ -155,6 +156,13 @@ def _build_title_variants(title: str) -> list[str]:
             variants.append(content)
             variants.append(_normalize_text(content))
 
+            for run in CJK_PATTERN.findall(content):
+                if len(run) < 2:
+                    continue
+
+                variants.append(run)
+                variants.append(_normalize_text(run))
+
     book_titles = [
         content.strip()
         for content in re.findall(r"《([^》]+)》", title)
@@ -214,6 +222,89 @@ def _build_title_variants(title: str) -> list[str]:
             if variant.strip()
         )
     )
+
+def _traditional_text(value: str | None) -> str:
+    """Convert Simplified Chinese to Traditional Chinese."""
+
+    if not value:
+        return ""
+
+    return _OPENCC_REVERSE.convert(value)
+
+def _script_variants(value: str | None) -> list[str]:
+    """Return Simplified, raw, and Traditional forms of a value."""
+
+    if not value:
+        return []
+
+    candidates = [
+        _normalize_text(value),
+        value.strip(),
+        _traditional_text(value).strip(),
+    ]
+
+    return list(
+        dict.fromkeys(
+            candidate
+            for candidate in candidates
+            if candidate
+        )
+    )
+
+CJK_PATTERN = re.compile(
+    r"[\u3400-\u4dbf\u4e00-\u9fff]+"
+)
+
+def _search_title_variants(title: str) -> list[str]:
+    """Return plausible song titles for provider text searches.
+
+    YouTube titles often wrap the song in brackets and add the artist,
+    collaborators, and video metadata. Querying the full title misses
+    provider entries, so extract bracketed titles and Chinese runs.
+    """
+
+    title = title.strip()
+
+    if not title:
+        return []
+
+    candidates: list[str] = []
+
+    def add(value: str) -> None:
+        value = value.strip()
+
+        if not value or len(value) > 80:
+            return
+
+        if value in candidates:
+            return
+
+        if NOISE_PATTERN.fullmatch(value):
+            return
+
+        if _extract_editions(f"({value})"):
+            return
+
+        candidates.append(value)
+
+    for pattern in (
+        r"【([^】]+)】",
+        r"\[([^\]]+)\]",
+        r"《([^》]+)》",
+    ):
+        for content in re.findall(pattern, title):
+            add(content)
+
+            for run in CJK_PATTERN.findall(content):
+                add(run)
+
+    for run in CJK_PATTERN.findall(title):
+        add(run)
+
+    add("".join(CJK_PATTERN.findall(title)))
+    add(title)
+
+    return candidates
 
 def _similarity(first: str, second: str) -> float:
     """Return a similarity score between two strings."""

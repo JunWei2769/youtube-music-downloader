@@ -57,6 +57,48 @@ def confidence_for_score(
 
     return "low"
 
+def _split_artist_names(value: str) -> set[str]:
+    """Split an artist string into separate names."""
+
+    return {
+        part.strip()
+        for part in re.split(
+            r",|&|/|／|、|_aka_|feat\.?|ft\.?",
+            value,
+        )
+        if part.strip()
+    }
+
+def _artist_components(value: str) -> set[str]:
+    """Return name components for mixed Chinese/Latin artist names."""
+
+    components = {value}
+
+    chinese_parts = re.findall(
+        r"[\u3400-\u4dbf\u4e00-\u9fff]+",
+        value,
+    )
+
+    components.update(chinese_parts)
+
+    latin_parts = re.findall(
+        r"[a-z][a-z0-9'’.-]*",
+        value,
+        flags=re.IGNORECASE,
+    )
+
+    if chinese_parts and latin_parts:
+        components.add(latin_parts[0])
+
+    if latin_parts:
+        components.add(" ".join(latin_parts))
+
+    return {
+        component.strip()
+        for component in components
+        if component.strip()
+    }
+
 def _artist_matches(
     track_artist: str | None,
     lyrics_artist: str | None,
@@ -65,69 +107,30 @@ def _artist_matches(
     if not track_artist or not lyrics_artist:
         return False
 
-    def normalize_artists(value: str) -> set[str]:
-        value = _normalize_text(
-            clean_artist_name(value) or value
+    track_artists = _split_artist_names(
+        _normalize_text(
+            clean_artist_name(track_artist) or track_artist
         )
-
-        parts = re.split(
-            r",|&|/|／|、|_aka_|feat\.?|ft\.?",
-            value,
+    )
+    lyrics_artists = _split_artist_names(
+        _normalize_text(
+            clean_artist_name(lyrics_artist) or lyrics_artist
         )
-
-        return {
-            part.strip()
-            for part in parts
-            if part.strip()
-        }
-
-    def artist_components(value: str) -> set[str]:
-        components = {value}
-
-        # Extract Chinese name components.
-        chinese_parts = re.findall(
-            r"[\u3400-\u4dbf\u4e00-\u9fff]+",
-            value,
-        )
-
-        components.update(chinese_parts)
-
-        # Extract the first Latin name component only when the
-        # artist contains both Latin and Chinese names.
-        #
-        # Example:
-        #   "lala 徐佳莹" -> "lala"
-        latin_parts = re.findall(
-            r"[a-z][a-z0-9'’.-]*",
-            value,
-            flags=re.IGNORECASE,
-        )
-
-        if chinese_parts and latin_parts:
-            components.add(latin_parts[0])
-
-        return {
-            component.strip()
-            for component in components
-            if component.strip()
-        }
-
-    track_artists = normalize_artists(track_artist)
-    lyrics_artists = normalize_artists(lyrics_artist)
+    )
 
     if not track_artists or not lyrics_artists:
         return False
 
-    for track_name in track_artists:
-        track_components = artist_components(track_name)
+    lyrics_components = {
+        component
+        for lyrics_name in lyrics_artists
+        for component in _artist_components(lyrics_name)
+    }
 
-        for lyrics_name in lyrics_artists:
-            lyrics_components = artist_components(lyrics_name)
-
-            if track_components & lyrics_components:
-                return True
-
-    return False
+    return any(
+        _artist_components(track_name) & lyrics_components
+        for track_name in track_artists
+    )
 
 def _artist_similarity(
     track_artist: str | None,
@@ -148,20 +151,8 @@ def _artist_similarity(
     if first == second:
         return 1.0
 
-    def normalize_artists(value: str) -> set[str]:
-        parts = re.split(
-            r",|&|/|／|、|_aka_|feat\.?|ft\.?",
-            value,
-        )
-
-        return {
-            part.strip()
-            for part in parts
-            if part.strip()
-        }
-
-    first_artists = normalize_artists(first)
-    second_artists = normalize_artists(second)
+    first_artists = _split_artist_names(first)
+    second_artists = _split_artist_names(second)
 
     if first_artists and second_artists:
         overlap = first_artists & second_artists
@@ -174,6 +165,24 @@ def _artist_similarity(
                 len(first_artists),
                 len(second_artists),
             )
+
+        first_components = set().union(
+            *(
+                _artist_components(name)
+                for name in first_artists
+            )
+        )
+        second_components = set().union(
+            *(
+                _artist_components(name)
+                for name in second_artists
+            )
+        )
+
+        if first_components & second_components:
+            # The same name appears in a different script or as one
+            # name in a collaboration list.
+            return 0.75
 
     return _similarity(first, second)
 

@@ -28,6 +28,8 @@ from ytmusic_dl.lyrics.normalize import (
     _extract_editions,
     _normalize_album,
     _normalize_text,
+    _script_variants,
+    _search_title_variants,
     _similarity,
 )
 from ytmusic_dl.lyrics.providers import (

@@ -291,7 +291,7 @@ The current provider order is:
 1. **LRCLIB**
 2. **NetEase Cloud Music**
 
-The downloader searches multiple lyrics providers and selects the best validated result.
+The downloader searches multiple lyrics providers and selects the best validated result. Chinese titles and artists are searched in both Traditional and Simplified Chinese, and bracketed song titles are extracted from noisy video titles.
 
 Lyrics candidates are validated using:
 
@@ -629,7 +629,7 @@ uv run pytest -v
 Current test status:
 
 ```text
-222 passed
+227 passed
 ```
 
 The GUI tests are skipped when PySide6 is not installed.

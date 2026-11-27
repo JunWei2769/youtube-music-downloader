@@ -3,11 +3,16 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from ytmusic_dl.lyrics import (
+    LRCLIBProvider,
     NetEaseProvider,
+    _artist_matches,
+    _artist_similarity,
     _build_netease_search_terms,
     _duration_is_acceptable,
     _normalize_text,
     _parse_netease_result,
+    _script_variants,
+    _search_title_variants,
     _similarity,
     _title_similarity,
     build_candidate,
@@ -1086,3 +1091,123 @@ def test_build_netease_search_terms_empty_title() -> None:
     track = Track(playlist_index=1, title="   ")
 
     assert _build_netease_search_terms(track) == []
+
+def test_script_variants_simplify_traditional() -> None:
+    """Try Simplified Chinese before the raw text."""
+
+    variants = _script_variants("周杰倫")
+
+    assert variants[0] == "周杰伦"
+    assert "周杰倫" in variants
+
+def test_search_title_variants_extract_song_from_video_title() -> None:
+    """Pull the song out of a noisy Traditional video title."""
+
+    variants = _search_title_variants(
+        "周杰倫 Jay Chou"
+        "【說好不哭 Won't Cry "
+        "(with 五月天阿信 Mayday Ashin)】Official MV"
+    )
+
+    assert "說好不哭" in variants
+
+def test_artist_matches_mixed_script_names() -> None:
+    """Match Chinese and Latin forms of the same artist."""
+
+    assert _artist_matches("周杰倫 Jay Chou", "Jay Chou")
+    assert _artist_matches("周杰倫 Jay Chou", "周杰伦")
+
+    assert _artist_similarity(
+        "周杰倫 Jay Chou",
+        "Jay Chou & Ashin Chen",
+    ) >= 0.75
+
+def test_build_candidate_for_traditional_chinese_song() -> None:
+    """Match a Traditional title to a Simplified lyrics entry."""
+
+    track = Track(
+        playlist_index=1,
+        title=(
+            "周杰倫 Jay Chou"
+            "【說好不哭 Won't Cry "
+            "(with 五月天阿信 Mayday Ashin)】Official MV"
+        ),
+        artist="周杰倫 Jay Chou",
+        duration=231,
+    )
+
+    candidate = build_candidate(
+        track,
+        LyricsResult(
+            provider="lrclib",
+            provider_id="1",
+            track_name="说好不哭",
+            artist_name="Jay Chou & Ashin Chen",
+            album_name=None,
+            duration=221,
+            instrumental=False,
+            synced_lyrics="[00:01.00] Test lyrics",
+            plain_lyrics=None,
+        ),
+    )
+
+    assert candidate.accepted
+    assert candidate.confidence == "high"
+
+def test_lrclib_search_uses_simplified_title() -> None:
+    """Retry LRCLIB with the Simplified song title."""
+
+    track = Track(
+        playlist_index=1,
+        title=(
+            "周杰倫 Jay Chou"
+            "【說好不哭 Won't Cry "
+            "(with 五月天阿信 Mayday Ashin)】Official MV"
+        ),
+        artist="周杰倫 Jay Chou",
+        duration=231,
+    )
+
+    provider = LRCLIBProvider()
+    calls: list[str] = []
+
+    def fake_get(url, params, headers, timeout):
+        calls.append(params["track_name"])
+
+        response = MagicMock()
+        response.raise_for_status.return_value = None
+
+        if params["track_name"] == "说好不哭":
+            response.json.return_value = [
+                {
+                    "id": 1,
+                    "trackName": "说好不哭",
+                    "artistName": "Jay Chou & Ashin Chen",
+                    "albumName": None,
+                    "duration": 221,
+                    "syncedLyrics": "[00:01.00] Test lyrics",
+                    "plainLyrics": None,
+                }
+            ]
+        else:
+            response.json.return_value = []
+
+        return response
+
+    with (
+        patch.object(
+            provider,
+            "_get_exact",
+            return_value=None,
+        ),
+        patch(
+            "ytmusic_dl.lyrics.providers.lrclib.httpx.get",
+            side_effect=fake_get,
+        ),
+    ):
+        results = provider.search(track)
+
+    assert [result.track_name for result in results] == [
+        "说好不哭"
+    ]
+    assert "说好不哭" in calls

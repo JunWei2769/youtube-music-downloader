@@ -8,7 +8,39 @@ from ytmusic_dl.lyrics.constants import (
     LRCLIB_API_URL,
     USER_AGENT,
 )
+from ytmusic_dl.lyrics.normalize import (
+    _script_variants,
+    _search_title_variants,
+)
 from ytmusic_dl.models import LyricsRequest, LyricsResult
+
+def _script_pairs(
+    title: str,
+    artist: str | None,
+) -> list[tuple[str, str | None]]:
+    """Pair title and artist in their raw, Simplified, and Traditional forms."""
+
+    titles = _script_variants(title)
+    artists = _script_variants(artist) if artist else []
+
+    pairs: list[tuple[str, str | None]] = []
+
+    for index, title_variant in enumerate(titles):
+        if artists:
+            artist_variant = (
+                artists[index]
+                if index < len(artists)
+                else artists[0]
+            )
+        else:
+            artist_variant = None
+
+        pair = (title_variant, artist_variant)
+
+        if pair not in pairs:
+            pairs.append(pair)
+
+    return pairs
 
 def _parse_lrclib_result(
     item: dict[str, Any],
@@ -86,63 +118,87 @@ class LRCLIBProvider:
         if not track.artist:
             return None
 
-        params: dict[str, Any] = {
-            "track_name": track.title,
-            "artist_name": track.artist,
-        }
+        for title, artist in _script_pairs(
+            track.title,
+            track.artist,
+        ):
+            params: dict[str, Any] = {
+                "track_name": title,
+                "artist_name": artist,
+            }
 
-        if track.album:
-            params["album_name"] = track.album
+            if track.album:
+                params["album_name"] = track.album
 
-        if track.duration is not None:
-            params["duration"] = track.duration
+            if track.duration is not None:
+                params["duration"] = track.duration
 
-        response = httpx.get(
-            f"{LRCLIB_API_URL}/get",
-            params=params,
-            headers=self.headers,
-            timeout=10.0,
-        )
+            response = httpx.get(
+                f"{LRCLIB_API_URL}/get",
+                params=params,
+                headers=self.headers,
+                timeout=10.0,
+            )
 
-        if response.status_code == 404:
-            return None
+            if response.status_code == 404:
+                continue
 
-        response.raise_for_status()
+            response.raise_for_status()
 
-        return _parse_lrclib_result(
-            response.json()
-        )
+            return _parse_lrclib_result(
+                response.json()
+            )
+
+        return None
 
     def _search(
         self,
         track: LyricsRequest,
     ) -> list[LyricsResult]:
-        """Search LRCLIB's keyword endpoint."""
-        params: dict[str, Any] = {
-            "track_name": track.title,
-        }
+        """Search LRCLIB using clean title variants."""
 
-        if track.artist:
-            params["artist_name"] = track.artist
+        results: list[LyricsResult] = []
+        seen_provider_ids: set[str] = set()
 
-        if track.album:
-            params["album_name"] = track.album
+        for title in _search_title_variants(track.title)[:5]:
+            for query_title in _script_variants(title):
+                params: dict[str, Any] = {
+                    "track_name": query_title,
+                }
 
-        response = httpx.get(
-            f"{LRCLIB_API_URL}/search",
-            params=params,
-            headers=self.headers,
-            timeout=10.0,
-        )
+                try:
+                    response = httpx.get(
+                        f"{LRCLIB_API_URL}/search",
+                        params=params,
+                        headers=self.headers,
+                        timeout=10.0,
+                    )
 
-        response.raise_for_status()
+                    response.raise_for_status()
 
-        data = response.json()
+                    data = response.json()
 
-        if not isinstance(data, list):
-            return []
+                except (httpx.HTTPError, ValueError):
+                    continue
 
-        return [
-            _parse_lrclib_result(item)
-            for item in data
-        ]
+                if not isinstance(data, list):
+                    continue
+
+                for item in data:
+                    result = _parse_lrclib_result(item)
+
+                    if (
+                        result.provider_id
+                        in seen_provider_ids
+                    ):
+                        continue
+
+                    seen_provider_ids.add(
+                        result.provider_id
+                    )
+                    results.append(result)
+
+                if results:
+                    break
+
+        return results
