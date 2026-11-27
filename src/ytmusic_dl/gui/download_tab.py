@@ -238,6 +238,17 @@ class DownloadTab(QWidget):
             QHeaderView.ResizeMode.Stretch,
         )
 
+        duration_header = self.track_table.horizontalHeaderItem(
+            5
+        )
+
+        if duration_header is not None:
+            duration_header.setToolTip(
+                "Video duration from YouTube. Official videos can be "
+                "longer than the track; lyrics matching allows a "
+                "small difference."
+            )
+
         self.track_table.itemChanged.connect(
             self._on_track_item_changed
         )

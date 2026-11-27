@@ -157,9 +157,25 @@ def test_duration_is_acceptable() -> None:
         210,
     )
 
+    # Official music videos can be longer than the track.
+    assert _duration_is_acceptable(
+        210,
+        249,
+    )
+
+    assert _duration_is_acceptable(
+        200,
+        245,
+    )
+
     assert not _duration_is_acceptable(
         200,
-        211,
+        260,
+    )
+
+    assert not _duration_is_acceptable(
+        200,
+        350,
     )
 
 
@@ -786,6 +802,24 @@ def test_build_candidate_rejects_duration_mismatch() -> None:
     assert any(
         "duration differs" in reason
         for reason in candidate.rejection_reasons
+    )
+
+def test_build_candidate_tolerates_music_video_duration() -> None:
+    """Accept a longer official video as the same song."""
+
+    result = make_result(duration=239, synced="lyrics")
+    result.album_name = None
+
+    candidate = build_candidate(
+        make_track(),
+        result,
+    )
+
+    assert candidate.accepted
+    assert candidate.confidence == "medium"
+    assert any(
+        "duration differs" in warning
+        for warning in candidate.warnings
     )
 
 def test_build_candidate_rejects_unrelated_title() -> None:

@@ -16,7 +16,8 @@ from ytmusic_dl.models import (
 from ytmusic_dl.utils import clean_artist_name
 
 MIN_TITLE_SIMILARITY = 0.60
-MAX_DURATION_DIFFERENCE = 10.0
+MAX_DURATION_DIFFERENCE = 45.0
+MAX_DURATION_RATIO = 0.25
 
 HIGH_CONFIDENCE_SCORE = 0.90
 MEDIUM_CONFIDENCE_SCORE = 0.75
@@ -202,14 +203,29 @@ def _duration_is_acceptable(
     track_duration: float | None,
     lyrics_duration: float | None,
 ) -> bool:
-    """Return whether two known durations are close enough."""
+    """Return whether two known durations are close enough.
+
+    Official music videos often include intros and outros, so the
+    video duration can be longer than the track duration used by
+    lyrics providers. Allow a small absolute or relative difference.
+    """
 
     if track_duration is None or lyrics_duration is None:
         return True
 
+    difference = abs(track_duration - lyrics_duration)
+
+    if difference <= MAX_DURATION_DIFFERENCE:
+        return True
+
+    shortest = min(track_duration, lyrics_duration)
+
+    if shortest <= 0:
+        return False
+
     return (
-        abs(track_duration - lyrics_duration)
-        <= MAX_DURATION_DIFFERENCE
+        difference / shortest
+        <= MAX_DURATION_RATIO
     )
 
 def _title_similarity(

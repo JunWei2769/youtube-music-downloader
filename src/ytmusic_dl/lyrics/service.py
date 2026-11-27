@@ -20,6 +20,7 @@ from ytmusic_dl.lyrics.scoring import (
     NEUTRAL_EDITIONS,
     _artist_matches,
     _artist_similarity,
+    _duration_is_acceptable,
     _duration_score,
     _match_score,
     _title_similarity,
@@ -96,8 +97,15 @@ def build_candidate(
     else:
         difference = abs(request.duration - result.duration)
 
-        if duration_score == 0.0:
+        if not _duration_is_acceptable(
+            request.duration,
+            result.duration,
+        ):
             rejection_reasons.append(
+                f"duration differs by {difference:.1f}s"
+            )
+        elif duration_score == 0.0:
+            warnings.append(
                 f"duration differs by {difference:.1f}s"
             )
         else:
